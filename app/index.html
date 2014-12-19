@@ -1,0 +1,101 @@
+<html>
+  <head>
+    <script src="//code.jquery.com/jquery-2.1.3.min.js"></script>
+
+    <script type="text/javascript">
+      var canonicalUrl = {{.CanonicalUrl}};
+    </script>
+
+    <style>
+      #page {
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+      }
+      #left-container {
+        float: left;
+        height: 100%;
+        width: 50%;
+      }
+      #left {
+        height: 100%;
+        width: 100%;
+        margin-right: 5px;
+      }
+      #right-container {
+        float: right;
+        height: 100%;
+        width: 50%;
+      }
+      #right {
+        height: 100%;
+        width: 100%;
+        margin-left: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="page">
+      <div id="left-container"><div id="left"></div></div>
+      <div id="right-container"><div id="right"></div></div>
+    </div>
+    <script type="text/javascript">
+      var L, R;
+
+      function updateToilet(toilet, selector) {
+        if (toilet.state === 'unlocked') {
+          $(selector).css('background-color', '#6CCB69');
+        } else {
+          $(selector).css('background-color', '#E53C15');
+        }
+      }
+
+      function updateLeft() {
+        updateToilet(L, '#left');
+      }
+
+      function updateRight() {
+        updateToilet(R, '#right');
+      }
+
+      $.getJSON('http://' + canonicalUrl + '/api/sensors', function(sensors) {
+        for (i in sensors) {
+          var sensor = sensors[i];
+          switch (sensor.name) {
+            case 'L':
+              L = sensor;
+              updateLeft();
+            case 'R':
+              R = sensor;
+              updateRight();
+          }
+        }
+      })
+
+      if ("WebSocket" in window) {
+        var ws = new WebSocket('ws://' + canonicalUrl + '/changes');
+
+	ws.onerror = function() {
+	  alert("WebSocket connection is broken");
+	};
+
+	ws.onmessage = function (evt) {
+	  var change = JSON.parse(evt.data);
+	  console.log(change);
+
+          if (change.name === 'L') {
+            L.state = change.state;
+            updateToilet(L, '#left');
+          } else {
+            R.state = change.state;
+            updateToilet(R, '#right');
+          }
+	};
+
+	ws.onclose = function() {
+	  alert("WebSocket connection is closed");
+	};
+      }
+    </script>
+  </body>
+</html>
