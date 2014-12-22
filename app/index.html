@@ -75,13 +75,13 @@
       if ("WebSocket" in window) {
         var ws = new WebSocket('ws://' + canonicalUrl + '/changes');
 
-	ws.onerror = function() {
-	  alert("WebSocket connection is broken");
-	};
+	      ws.onerror = function() {
+	        alert("WebSocket connection is broken");
+	      };
 
-	ws.onmessage = function (evt) {
-	  var change = JSON.parse(evt.data);
-	  console.log(change);
+	      ws.onmessage = function (evt) {
+	        var change = JSON.parse(evt.data);
+	        console.log(change);
 
           if (change.name === 'L') {
             L.state = change.state;
@@ -90,11 +90,11 @@
             R.state = change.state;
             updateToilet(R, '#right');
           }
-	};
+	      };
 
-	ws.onclose = function() {
-	  alert("WebSocket connection is closed");
-	};
+	      ws.onclose = function() {
+	        alert("WebSocket connection is closed");
+	      };
       }
     </script>
   </body>
