@@ -223,12 +223,15 @@ Loop:
 
 			// Broadcast the status in case the server is running.
 			if srv.running() {
-				srv.broadcastChange(record)
+				srv.broadcastSensorChange(record)
 			}
 
 		case conn := <-srv.registerConnCh:
 			// Add the connection to the list.
 			srv.conns = append(srv.conns, conn)
+
+			// Dump the internal state into the connection.
+			srv.sendSensorStates(conn)
 
 			// Start the goroutine handling the connection.
 			// According to the websocket docs, it is necessary to read
@@ -258,7 +261,7 @@ Loop:
 					record.State = sensor.State
 
 					// Broadcast the change.
-					srv.broadcastChange(sensor)
+					srv.broadcastSensorChange(sensor)
 				}
 			}
 
@@ -287,7 +290,16 @@ Loop:
 	}
 }
 
-func (srv *Server) broadcastChange(sensor *Sensor) {
+func (srv *Server) sendSensorStates(conn *websocket.Conn) {
+	// Send the sensor states as events, one by one.
+	for _, sensor := range srv.sensors {
+		if err := conn.WriteJSON(sensor); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func (srv *Server) broadcastSensorChange(sensor *Sensor) {
 	// Broadcast the change to all connected clients.
 	for _, conn := range srv.conns {
 		if err := conn.WriteJSON(sensor); err != nil {

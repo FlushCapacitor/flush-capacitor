@@ -42,14 +42,6 @@
     <script type="text/javascript">
       var L, R;
 
-      function updateToilet(toilet, selector) {
-        if (toilet.state === 'unlocked') {
-          $(selector).css('background-color', '#6CCB69');
-        } else {
-          $(selector).css('background-color', '#E53C15');
-        }
-      }
-
       function updateLeft() {
         updateToilet(L, '#left');
       }
@@ -58,21 +50,17 @@
         updateToilet(R, '#right');
       }
 
-      $.getJSON('http://' + canonicalUrl + '/api/sensors', function(sensors) {
-        for (i in sensors) {
-          var sensor = sensors[i];
-          switch (sensor.name) {
-            case 'L':
-              L = sensor;
-              updateLeft();
-            case 'R':
-              R = sensor;
-              updateRight();
-          }
+      function updateToilet(toilet, selector) {
+        if (toilet.state === 'unlocked') {
+          $(selector).css('background-color', '#6CCB69');
+        } else {
+          $(selector).css('background-color', '#E53C15');
         }
-      })
+      }
 
       if ("WebSocket" in window) {
+        // WebSocket support, yay! Connect to the stream with real-time
+        // updates, repaint the screen when a sensor state changes.
         var ws = new WebSocket('ws://' + canonicalUrl + '/changes');
 
 	      ws.onerror = function() {
@@ -83,18 +71,39 @@
 	        var change = JSON.parse(evt.data);
 	        console.log(change);
 
-          if (change.name === 'L') {
-            L.state = change.state;
-            updateToilet(L, '#left');
-          } else {
-            R.state = change.state;
-            updateToilet(R, '#right');
+          switch (change.name) {
+            case 'L':
+              L = change;
+              updateLeft();
+              break;
+            case 'R':
+              R = change;
+              updateRight();
+              break;
           }
 	      };
 
 	      ws.onclose = function() {
 	        alert("WebSocket connection is closed");
 	      };
+      } else {
+        // No WebSocket support, just get the sensor states once.
+        // No real-time updates here, too bad.
+        $.getJSON('http://' + canonicalUrl + '/api/sensors', function(sensors) {
+          for (i in sensors) {
+            var sensor = sensors[i];
+            switch (sensor.name) {
+              case 'L':
+                L = sensor;
+                updateLeft();
+                break;
+              case 'R':
+                R = sensor;
+                updateRight();
+                break;
+            }
+          }
+        })
       }
     </script>
   </body>
