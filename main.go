@@ -28,7 +28,7 @@ func main() {
 func run() error {
 	// Parse the flags.
 	addr := flag.String("listen", "localhost:8080", "network address to listen on")
-	canonicalUrl := flag.String("canonical_url", "http://localhost:8080",
+	canonicalUrl := flag.String("canonical_url", "localhost:8080",
 		"URL to be used to access the server")
 	rand := flag.Bool("random", false, "trigger sensor changes randomly")
 	watch := flag.Bool("watch", false, "watch the toilet status in the command line")
