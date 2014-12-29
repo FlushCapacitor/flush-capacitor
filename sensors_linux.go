@@ -1,10 +1,10 @@
 package main
 
 import (
+	"github.com/FlushCapacitor/flush-capacitor/sensors"
+	io "github.com/FlushCapacitor/flush-capacitor/sensors/gpio"
 	"github.com/davecheney/gpio"
 	"github.com/davecheney/gpio/rpi"
-	"github.com/tchap/go-pi-indicator/sensors"
-	io "github.com/tchap/go-pi-indicator/sensors/gpio"
 )
 
 func getSensors() ([]sensors.Sensor, error) {

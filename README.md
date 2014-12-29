@@ -1,4 +1,4 @@
-# go-pi-indicator #
+# flush-capacitor #
 
 An online toilet occupancy indicator for Rapsberry Pi written in Go.
 

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tchap/go-pi-indicator/sensors"
+import "github.com/FlushCapacitor/flush-capacitor/sensors"
 
 func getSensors() ([]sensors.Sensor, error) {
 	panic("Not implemented")

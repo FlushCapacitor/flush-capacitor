@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tchap/go-pi-indicator/sensors"
+	"github.com/FlushCapacitor/flush-capacitor/sensors"
 )
 
 const (

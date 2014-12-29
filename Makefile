@@ -1,5 +1,5 @@
 install: format
-	go install github.com/tchap/go-pi-indicator
+	go install github.com/FlushCapacitor/flush-capacitor
 
 format:
 	go fmt ./...

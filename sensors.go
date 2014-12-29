@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/tchap/go-pi-indicator/sensors"
-	"github.com/tchap/go-pi-indicator/sensors/random"
+	"github.com/FlushCapacitor/flush-capacitor/sensors"
+	"github.com/FlushCapacitor/flush-capacitor/sensors/random"
 )
 
 func getRandomSensors() []sensors.Sensor {

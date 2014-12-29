@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/tchap/go-pi-indicator/sensors"
+	"github.com/FlushCapacitor/flush-capacitor/sensors"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/websocket"
