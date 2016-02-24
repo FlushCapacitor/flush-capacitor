@@ -107,12 +107,22 @@ func NewServer(options ...func(*Server)) (*Server, error) {
 
 // Exported methods ------------------------------------------------------------
 
-func (srv *Server) SetAddr(addr string) {
-	srv.addr = addr
+func SetAddr(addr string) func(*Server) {
+	return func(srv *Server) {
+		srv.addr = addr
+	}
 }
 
-func (srv *Server) SetCanonicalUrl(canonicalUrl string) {
-	srv.canonicalUrl = canonicalUrl
+func SetCanonicalUrl(canonicalUrl string) func(*Server) {
+	return func(srv *Server) {
+		srv.canonicalUrl = canonicalUrl
+	}
+}
+
+func ForwardDevices(addrs []string) func(*Server) {
+	return func(srv *Server) {
+		srv.forwardDevices = addrs
+	}
 }
 
 type registerCmd struct {

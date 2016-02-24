@@ -33,6 +33,9 @@ func run() error {
 	rand := flag.Bool("random", false, "trigger sensor changes randomly")
 	watch := flag.Bool("watch", false, "watch the toilet status in the command line")
 
+	var forward StringSliceFlag
+	flag.Var(&forward, "forward", "forward events from another device")
+
 	flag.Parse()
 
 	if *watch {
@@ -40,7 +43,11 @@ func run() error {
 	}
 
 	// Instantiate the server.
-	srv, err := NewServer(setAddr(*addr), setCanonicalUrl(*canonicalUrl))
+	srv, err := NewServer(
+		SetAddr(*addr),
+		SetCanonicalUrl(*canonicalUrl),
+		ForwardDevices(forward.Values),
+	)
 	if err != nil {
 		return err
 	}
@@ -84,18 +91,6 @@ func run() error {
 
 	// Start processing requests and block until the server is terminated.
 	return srv.ListenAndServe()
-}
-
-func setAddr(addr string) func(*Server) {
-	return func(srv *Server) {
-		srv.SetAddr(addr)
-	}
-}
-
-func setCanonicalUrl(canonicalUrl string) func(*Server) {
-	return func(srv *Server) {
-		srv.SetCanonicalUrl(canonicalUrl)
-	}
 }
 
 func terminate(srv *Server) {
