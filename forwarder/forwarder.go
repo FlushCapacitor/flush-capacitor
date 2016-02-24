@@ -13,7 +13,8 @@ import (
 )
 
 type Forwarder struct {
-	t tomb.Tomb
+	ws *websocket.Conn
+	t  tomb.Tomb
 }
 
 func Forward(changesAddr string, forwardCh chan<- *common.Sensor) (*Forwarder, error) {
@@ -28,17 +29,28 @@ func Forward(changesAddr string, forwardCh chan<- *common.Sensor) (*Forwarder, e
 	}
 
 	// Start the forwarder.
-	var forwarder Forwarder
+	forwarder := &Forwarder{ws: conn}
 	forwarder.t.Go(forwarder.loop)
-	return &forwarder, nil
+	return forwarder, nil
 }
 
 func (forwarder *Forwarder) loop() error {
 	for {
+		messageType, messagePayload, err := forwarder.ws.ReadMessage()
+		if err != nil {
+
+		}
 	}
 }
 
-func (forwarder *Forwarder) Stop() error {
+func (forwarder *Forwarder) Stop() {
 	forwarder.t.Kill(nil)
+}
+
+func (forwarder *Forwarder) Dead() <-chan struct{} {
+	return forwarder.t.Dead()
+}
+
+func (forwarder *Forwarder) Wait() error {
 	return forwarder.t.Wait()
 }

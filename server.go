@@ -39,6 +39,7 @@ type Sensor struct {
 type Server struct {
 	addr         string
 	canonicalUrl string
+	forwardAddrs []string
 
 	handler  http.Handler
 	homePage []byte
@@ -121,7 +122,7 @@ func SetCanonicalUrl(canonicalUrl string) func(*Server) {
 
 func ForwardDevices(addrs []string) func(*Server) {
 	return func(srv *Server) {
-		srv.forwardDevices = addrs
+		srv.forwardAddrs = addrs
 	}
 }
 
@@ -162,6 +163,11 @@ func (srv *Server) ListenAndServe() error {
 		return err
 	}
 	srv.listener = listener
+
+	// In case forwarding is enabled, start the forwarding goroutines.
+	for _, addr := range srv.forwardAddrs {
+
+	}
 
 	// Start serving requests.
 	return http.Serve(srv.listener, srv.handler)
