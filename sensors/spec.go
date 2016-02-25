@@ -67,7 +67,11 @@ type LedSpec struct {
 	PinRed   int `json:"pin_red"`
 }
 
-func ReadSpec(filename string) (*Spec, error) {
+func FromSpec(spec *Spec) ([]Sensor, error) {
+
+}
+
+func FromSpecFile(filename string) ([]Sensor, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -78,9 +82,6 @@ func ReadSpec(filename string) (*Spec, error) {
 	if err := json.NewDecoder(file).Decode(&spec); err != nil {
 		return nil, err
 	}
-	return &spec, nil
-}
 
-func SensorsFromSpec(spec *Spec) ([]Sensor, error) {
-
+	return FromSpec(&spec)
 }

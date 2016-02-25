@@ -12,14 +12,6 @@ import (
 	"github.com/FlushCapacitor/flush-capacitor/sensors"
 )
 
-const (
-	toiletNameLeft  = "L"
-	toiletNameRight = "R"
-
-	toiletStateUnlocked = "unlocked"
-	toiletStateLocked   = "locked"
-)
-
 func main() {
 	if err := run(); err != nil {
 		log.Fatalln("Error:", err)
@@ -31,7 +23,7 @@ func run() error {
 	addr := flag.String("listen", "localhost:8080", "network address to listen on")
 	canonicalUrl := flag.String("canonical_url", "localhost:8080",
 		"URL to be used to access the server")
-	spec := flag.String("sensor_spec", "", "sensor specification file")
+	spec := flag.String("spec", "", "sensor specification file")
 
 	var forward StringSliceFlag
 	flag.Var(&forward, "forward", "forward events from another device")
@@ -40,15 +32,12 @@ func run() error {
 
 	// Load the config file when desired.
 	var (
-		sensorConfig *config.Config
-		err          error
+		ss  []sensor.Sensor
+		err error
 	)
 	if *spec != "" {
-		sensorConfig, err = config.ReadSensorConfig(*spec)
+		ss, err = sensors.FromSpecFile(*spec)
 		if err != nil {
-			return err
-		}
-		if err := sensorConfig.Validate(); err != nil {
 			return err
 		}
 	}
