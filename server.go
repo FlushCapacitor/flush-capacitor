@@ -69,6 +69,7 @@ func NewServer(options ...func(*Server)) (*Server, error) {
 	srv := &Server{
 		addr:             "localhost:8080",
 		canonicalUrl:     "localhost:8080",
+		forwardCh:        make(chan *common.SensorStateChangedEvent),
 		registerSensorCh: make(chan *registerCmd),
 		sensorChangedCh:  make(chan *Sensor),
 		registerConnCh:   make(chan *websocket.Conn),
@@ -172,7 +173,6 @@ func (srv *Server) ListenAndServe() error {
 	// In case forwarding is enabled, start the forwarding goroutines.
 	if n := len(srv.forwardAddrs); n != 0 {
 		srv.forwarders = make([]*forwarder.Forwarder, 0, n)
-		srv.forwardCh = make(chan *common.SensorStateChangedEvent, n)
 		for _, addr := range srv.forwardAddrs {
 			srv.forwarders = append(srv.forwarders, forwarder.Start(addr, srv.forwardCh))
 		}
@@ -196,6 +196,12 @@ func (srv *Server) Terminate() error {
 
 	// Wait for the loop to return.
 	<-srv.termAckCh
+
+	// Stop the forwarders.
+	for _, forwarder := range srv.forwarders {
+		forwarder.Stop()
+		<-forwarder.Dead()
+	}
 
 	// Close the listener. This will unblock ListenAndServe.
 	// The listener might be unset in case only ServeHTTP is being used.
@@ -279,16 +285,22 @@ Loop:
 			}
 
 		case sensor := <-srv.sensorChangedCh:
-			// Update the server record and broadcast the change.
+			// Update the server record.
+			var updated bool
 			for _, record := range srv.sensors {
 				if record.Name == sensor.Name {
 					// Update the server record.
 					record.State = sensor.State
-
-					// Broadcast the change.
-					srv.broadcastSensorChange(sensor)
+					updated = true
 				}
 			}
+			// Insert a record in case no record was found.
+			if !updated {
+				srv.sensors = append(srv.sensors, sensor)
+			}
+
+			// Broadcast the change.
+			srv.broadcastSensorChange(sensor)
 
 		case event := <-srv.forwardCh:
 			go func() {

@@ -4,6 +4,7 @@ import (
 	// Stdlib
 	"bytes"
 	"encoding/json"
+	"strings"
 	"time"
 
 	// Internal
@@ -181,6 +182,12 @@ func (forwarder *Forwarder) readLoop() error {
 				return nil
 			}
 
+			// This is rather retarded, Go's fault.
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				logger.Debug("forwarder being stopped, exiting...")
+				return nil
+			}
+
 			// Otherwise log the error and return it.
 			// Returning a non-nil error will cause the connection to be closed.
 			logger.Error("failed to read another message", log.Ctx{"error": err})
@@ -231,6 +238,12 @@ func (forwarder *Forwarder) writeLoop() error {
 				// In case this is a CloseError, log and return.
 				if _, ok := err.(*websocket.CloseError); ok {
 					logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
+					return nil
+				}
+
+				// This is rather retarded, Go's fault.
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					logger.Debug("forwarder being stopped, exiting...")
 					return nil
 				}
 
