@@ -147,40 +147,6 @@ func (forwarder *Forwarder) connectionManager() error {
 	}
 }
 
-func (forwarder *Forwarder) writeLoop() error {
-	// Set up logging for this goroutine.
-	logger := forwarder.log.New(log.Ctx{"thread": "writer"})
-
-	// Set up a ticker to tick every pingPeriod.
-	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		// Wait for the next tick.
-		case <-ticker.C:
-			// Send a PING message.
-			if err := forwarder.writeMessage(websocket.PingMessage, []byte{}); err != nil {
-				// In case this is a CloseError, log and return.
-				if _, ok := err.(*websocket.CloseError); ok {
-					logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
-					return nil
-				}
-
-				// Otherwise log the error and return it.
-				// Returning a non-nil error will cause the connection to be closed.
-				logger.Error("failed to send PING", log.Ctx{"error": err})
-				return err
-			}
-
-		// Return immediately in case Stop() is called.
-		case <-forwarder.t.Dying():
-			logger.Debug("forwarder being stopped, exiting...")
-			return nil
-		}
-	}
-}
-
 func (forwarder *Forwarder) readLoop() error {
 	// Some initial stuff.
 	var (
@@ -237,6 +203,40 @@ func (forwarder *Forwarder) readLoop() error {
 		select {
 		case forwarder.forwardCh <- &event:
 		case forwarder.t.Dying():
+			return nil
+		}
+	}
+}
+
+func (forwarder *Forwarder) writeLoop() error {
+	// Set up logging for this goroutine.
+	logger := forwarder.log.New(log.Ctx{"thread": "writer"})
+
+	// Set up a ticker to tick every pingPeriod.
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		// Wait for the next tick.
+		case <-ticker.C:
+			// Send a PING message.
+			if err := forwarder.writeMessage(websocket.PingMessage, []byte{}); err != nil {
+				// In case this is a CloseError, log and return.
+				if _, ok := err.(*websocket.CloseError); ok {
+					logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
+					return nil
+				}
+
+				// Otherwise log the error and return it.
+				// Returning a non-nil error will cause the connection to be closed.
+				logger.Error("failed to send PING", log.Ctx{"error": err})
+				return err
+			}
+
+		// Return immediately in case Stop() is called.
+		case <-forwarder.t.Dying():
+			logger.Debug("forwarder being stopped, exiting...")
 			return nil
 		}
 	}
