@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/FlushCapacitor/flush-capacitor/common"
+	"github.com/FlushCapacitor/flush-capacitor/forwarder"
 	"github.com/FlushCapacitor/flush-capacitor/sensors"
 
 	"github.com/codegangsta/negroni"
@@ -48,6 +50,9 @@ type Server struct {
 
 	sensors []*Sensor
 	conns   []*websocket.Conn
+
+	forwarders []*forwarder.Forwarder
+	forwardCh  chan *common.SensorStateChangedEvent
 
 	registerSensorCh chan *registerCmd
 	sensorChangedCh  chan *Sensor
@@ -165,8 +170,12 @@ func (srv *Server) ListenAndServe() error {
 	srv.listener = listener
 
 	// In case forwarding is enabled, start the forwarding goroutines.
-	for _, addr := range srv.forwardAddrs {
-
+	if n := len(srv.forwardAddrs); n != 0 {
+		srv.forwarders = make([]*forwarder.Forwarder, 0, n)
+		srv.forwardCh = make(chan *common.SensorStateChangedEvent, n)
+		for _, addr := range srv.forwardAddrs {
+			srv.forwarders = append(srv.forwarders, forwarder.Start(addr, srv.forwardCh))
+		}
 	}
 
 	// Start serving requests.
@@ -280,6 +289,19 @@ Loop:
 					srv.broadcastSensorChange(sensor)
 				}
 			}
+
+		case event := <-srv.forwardCh:
+			go func() {
+				sensor := &Sensor{
+					Name:  event.SensorName,
+					State: event.SensorState,
+				}
+
+				select {
+				case srv.sensorChangedCh <- sensor:
+				case <-srv.termCh:
+				}
+			}()
 
 		case cmd := <-srv.serveSensorsCh:
 			// Just dump the sensor records.

@@ -43,7 +43,7 @@ type Forwarder struct {
 	t   tomb.Tomb
 }
 
-func Forward(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
+func Start(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
 		log: log.New(log.Ctx{

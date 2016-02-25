@@ -1,6 +1,6 @@
 package common
 
-type StoryStateChangedEvent struct {
+type SensorStateChangedEvent struct {
 	SensorName  string `json:"name"`
 	SensorState string `json:"state"`
 }

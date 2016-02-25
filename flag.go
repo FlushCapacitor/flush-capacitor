@@ -1,13 +1,16 @@
 package main
 
+import "fmt"
+
 type StringSliceFlag struct {
 	Values []string
 }
 
 func (flag *StringSliceFlag) String() string {
-	return fmt.Sprint(flag.values)
+	return fmt.Sprint(flag.Values)
 }
 
 func (flag *StringSliceFlag) Set(value string) error {
-	flag.values = append(flag.values, value)
+	flag.Values = append(flag.Values, value)
+	return nil
 }
