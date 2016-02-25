@@ -13,6 +13,12 @@ import (
 )
 
 const (
+	// The initial handshake timeout before we start exponential backoff.
+	initialHandshakeTimeout = 2 * time.Second
+
+	// The backoff should be limited to certain time.
+	maxHandshakeTimeout = 1 * time.Minute
+
 	// Every message must be written to the peer in less than 10 seconds.
 	writeTimeout = 10 * time.Second
 
@@ -26,28 +32,84 @@ type Forwarder struct {
 	t  tomb.Tomb
 }
 
-func Forward(changesAddr string, forwardCh chan<- *common.SensorState) (*Forwarder, error) {
-	// Connect to the remote address.
-	dialer := &websocket.Dialer{
-		HandshakeTimeout: 5 * time.Second,
+func Forward(changesAddr string, forwardCh chan<- *common.SensorState) *Forwarder {
+	// Store the arguments in the forwarder.
+	forwarder := &Forwarder{
+		changesAddr: changesAddr,
+		forwardCh:   forwardCh,
 	}
 
-	conn, resp, err := dialer.Dial(changesAddr, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start the forwarder.
-	forwarder := &Forwarder{ws: conn}
+	// Start the loop.
 	forwarder.t.Go(forwarder.loop)
-	return forwarder, nil
+
+	// Return the new forwarder.
+	return forwarder
 }
 
 func (forwarder *Forwarder) loop() error {
-	for {
-		messageType, messagePayload, err := forwarder.ws.ReadMessage()
-		if err != nil {
+	var handshakeTimeout time.Duration
 
+	resetHandshakeTimeout := func() {
+		handshakeTimeout = initialHandshakeTimeout
+	}
+
+	incrementHandshakeTimeout := func() {
+		handshakeTimeout = minInt(2*handshakeTimeout, maxHandshakeTimeout)
+	}
+
+	resetHandshakeTimeout()
+
+	for {
+		// Try to connect to the source device using the current handshake timeout.
+		dialer := &websocket.Dialer{
+			HandshakeTimeout: handshakeTimeout,
+		}
+
+		conn, resp, err := dialer.Dial(changesAddr, nil)
+		if err != nil {
+			// In case there is an error, we log it and increment the handshake timeout.
+			// Then we try to connect again, doing this infinitely.
+			incrementHandshakeTimeout()
+			continue
+		}
+
+		// In case we succeeded, we reset the handshake timeout to the initial value.
+		resetHandshakeTimeout()
+
+		// Set up read deadlines.
+		setReadDeadline := func() {
+			conn.SetReadDeadline(time.Now().Add(pongTimeout))
+		}
+
+		setReadDeadline()
+		conn.SetPongHandler(func(string) error {
+			setReadDeadline()
+			return nil
+		})
+
+		for {
+			messageType, messagePayload, err := conn.ReadMessage()
+			if err != nil {
+				// XXX: Log properly.
+				fmt.Println(err)
+				break
+			}
+
+			if messageType != websocket.TextMessage {
+				// XXX: Log properly.
+				fmt.Println("Not a TextMessage!")
+				break
+			}
+
+			var event common.SensorStateChangedEvent
+			if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
+				// XXX: Log properly.
+				fmt.Println("Failed to decode:", messagePayload, err)
+				continue
+			}
+
+			// Forward the event.
+			forwarder.forwardCh <- &event
 		}
 	}
 }
