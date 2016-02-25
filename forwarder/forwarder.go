@@ -47,8 +47,8 @@ func Start(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEve
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
 		log: log.New(log.Ctx{
-			"component":      "Forwarder",
-			"source address": changesFeedURL,
+			"component": "forwarder",
+			"source":    changesFeedURL,
 		}),
 		sourceAddr: changesFeedURL,
 		forwardCh:  forwardCh,
@@ -63,7 +63,7 @@ func Start(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEve
 
 func (forwarder *Forwarder) connectionManager() error {
 	// Set up logging.
-	logger := forwarder.log.New(log.Ctx{"thread": "connection manager"})
+	logger := forwarder.log.New(log.Ctx{"thread": "manager"})
 
 	// Set up exponential backoff for reconnection.
 	var (
@@ -78,8 +78,8 @@ func (forwarder *Forwarder) connectionManager() error {
 	}
 
 	reconnectWithBackoff := func() {
-		logger.Debug("will try to reconnect", log.Ctx{
-			"backoff (seconds)": reconnectBackoff / time.Second,
+		logger.Debug("will try to reconnect later", log.Ctx{
+			"backoff": reconnectBackoff / time.Second,
 		})
 		reconnectCh = time.After(reconnectBackoff)
 		reconnectBackoff = minDuration(2*reconnectBackoff, maxReconnectBackoff)
@@ -100,7 +100,7 @@ func (forwarder *Forwarder) connectionManager() error {
 				HandshakeTimeout: handshakeTimeout,
 			}
 
-			logger.Info("connecting to the source changes feed", log.Ctx{"timeout": handshakeTimeout})
+			logger.Info("connecting", log.Ctx{"timeout": handshakeTimeout})
 
 			ws, _, err := dialer.Dial(forwarder.sourceAddr, nil)
 			if err != nil {
@@ -113,6 +113,8 @@ func (forwarder *Forwarder) connectionManager() error {
 				reconnectWithBackoff()
 				continue
 			}
+
+			logger.Info("connected")
 			forwarder.ws = ws
 
 			// In case we succeed, we set reconnectCh to nil not to reconnect again immediately.
@@ -205,6 +207,7 @@ func (forwarder *Forwarder) readLoop() error {
 		// Make sure we unblock in case Stop() is called.
 		select {
 		case forwarder.forwardCh <- &event:
+			logger.Debug("event forwarded", log.Ctx{"event": event})
 		case <-forwarder.t.Dying():
 			return nil
 		}
