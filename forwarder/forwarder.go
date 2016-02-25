@@ -91,21 +91,24 @@ func (forwarder *Forwarder) connectionManager() error {
 			incrementHandshakeTimeout()
 			continue
 		}
+		forwarder.conn = conn
 
 		// In case we succeeded, we reset the handshake timeout to the initial value.
 		resetHandshakeTimeout()
 
-		forwarder.conn = conn
-
-		forwarder.connTomb = tomb.Tomb{}
-		forwarder.connTomb.Go(forwarder.loopPing)
-		forwarder.connTomb.Go(forwarder.loopForward)
+		// Star the loops.
+		var connTomb tomb.Tomb
+		connTomb.Go(forwarder.readLoop)
+		connTomb.Go(forwarder.writeLoop)
 
 		select {
-		case <-forwarder.connTomb.Dead():
+		// In case the loops die, we continue = reconnect.
+		case <-connTomb.Dead():
 			continue
 
-		case <-forwarder.mainTomb.Dying():
+		// In case Stop() is called, we close the connection cleanly.
+		case <-forwarder.t.Dying():
+			// Try to send a CLOSE message to shut down cleanly.
 			if err := forwarder.writeMessage(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "KTHXBYE"),
@@ -113,63 +116,19 @@ func (forwarder *Forwarder) connectionManager() error {
 				logger.Warn("failed to close the connection cleanly", log.Ctx{"error": err})
 			}
 
+			// Then call Close() in any case.
 			if err := conn.Close(); err != nil {
 				logger.Warn("failed to close the connection", log.Ctx{"error": err})
 			}
 
-			forwarder.connTomb.Wait()
+			// And finally, wait for the loops to die.
+			connTomb.Wait()
 			return nil
 		}
 	}
 }
 
-func (forwarder *Forwarder) loopForward() error {
-
-	// Set up read deadlines.
-	setReadDeadline := func() {
-		conn.SetReadDeadline(time.Now().Add(pongTimeout))
-	}
-
-	setReadDeadline()
-	conn.SetPongHandler(func(string) error {
-		setReadDeadline()
-		return nil
-	})
-
-	// Start the PING loop.
-	go forwarder.loopPing(conn)
-
-	// Enter the receiving loop.
-	for {
-		// Read a message.
-		messageType, messagePayload, err := conn.ReadMessage()
-		if err != nil {
-			logger.Error("failed to read a message", log.Ctx{"error": err})
-			break
-		}
-
-		// Drop the message unless it is a text message.
-		if messageType != websocket.TextMessage {
-			logger.Warn("text message expected, message dropped")
-			continue
-		}
-
-		// Decode the message payload.
-		var event common.SensorStateChangedEvent
-		if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
-			forwarder.log.Warn("failed to decode a message", log.Ctx{
-				"error":   err,
-				"message": messagePayload,
-			})
-			continue
-		}
-
-		// Forward the event.
-		forwarder.forwardCh <- &event
-	}
-}
-
-func (forwarder *Forwarder) loopPing() error {
+func (forwarder *Forwarder) writeLoop() error {
 	// Set up logging for this goroutine.
 	logger := forwarder.log.New(log.Ctx{"thread": "ping"})
 
@@ -183,13 +142,14 @@ func (forwarder *Forwarder) loopPing() error {
 		case <-ticker.C:
 			// Send a PING message.
 			if err := forwarder.writeMessage(websocket.PingMessage, []byte{}); err != nil {
-				// In case this is a CloseError, return it.
+				// In case this is a CloseError, log and return.
 				if _, ok := err.(*websocket.CloseError); ok {
 					logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
 					return nil
 				}
 
-				// Otherwise log the error and continue.
+				// Otherwise log the error and return it.
+				// Returning a non-nil error will cause the connection to be closed.
 				logger.Error("failed to send PING", log.Ctx{"error": err})
 				return err
 			}
@@ -197,6 +157,67 @@ func (forwarder *Forwarder) loopPing() error {
 		// Return immediately in case Stop() is called.
 		case <-forwarder.t.Dying():
 			logger.Debug("forwarder being stopped, exiting...")
+			return nil
+		}
+	}
+}
+
+func (forwarder *Forwarder) readLoop() error {
+	// Some initial stuff.
+	var (
+		conn   = forwarder.conn
+		logger = forwarder.log.New(log.Ctx{"thread": "reader"})
+	)
+
+	// Read deadlines handling.
+	setReadDeadline := func() {
+		conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	}
+
+	setReadDeadline()
+	conn.SetPongHandler(func(string) error {
+		setReadDeadline()
+		return nil
+	})
+
+	// Read until the world comes to an end.
+	for {
+		// Read another message.
+		messageType, messagePayload, err := conn.ReadMessage()
+		if err != nil {
+			// In case this is a CloseError, log and return.
+			if _, ok := err.(*websocket.CloseError); ok {
+				logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
+				return nil
+			}
+
+			// Otherwise log the error and return it.
+			// Returning a non-nil error will cause the connection to be closed.
+			logger.Error("failed to read another message", log.Ctx{"error": err})
+			return err
+		}
+
+		// Drop the message unless it is a text message.
+		if messageType != websocket.TextMessage {
+			logger.Warn("text message expected")
+			continue
+		}
+
+		// Decode the message payload.
+		var event common.SensorStateChangedEvent
+		if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
+			logger.Warn("failed to decode a message", log.Ctx{
+				"error":   err,
+				"message": messagePayload,
+			})
+			continue
+		}
+
+		// Forward the event.
+		// Make sure we unblock in case Stop() is called.
+		select {
+		case forwarder.forwardCh <- &event:
+		case forwarder.t.Dying():
 			return nil
 		}
 	}
