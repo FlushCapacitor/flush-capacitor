@@ -62,9 +62,10 @@ func run() error {
 
 	// Get the sensors.
 	var ss []sensors.Sensor
-	if *rand {
+	switch {
+	case *rand:
 		ss = getRandomSensors()
-	} else {
+	case len(forward.Values) == 0:
 		var err error
 		ss, err = getSensors()
 		if err != nil {
