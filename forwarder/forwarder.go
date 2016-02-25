@@ -30,7 +30,8 @@ const (
 )
 
 type Forwarder struct {
-	ws *websocket.Conn
+	ws       *websocket.Conn
+	connTomb tomb.Tomb
 
 	log log.Logger
 	t   tomb.Tomb
@@ -77,9 +78,7 @@ func (forwarder *Forwarder) connectionManager() error {
 			HandshakeTimeout: handshakeTimeout,
 		}
 
-		logger.Info("connecting to the source device", log.Ctx{
-			"timeout": handshakeTimeout,
-		})
+		logger.Info("connecting to the source device", log.Ctx{"timeout": handshakeTimeout})
 
 		conn, resp, err := dialer.Dial(changesAddr, nil)
 		if err != nil {
@@ -96,9 +95,31 @@ func (forwarder *Forwarder) connectionManager() error {
 		// In case we succeeded, we reset the handshake timeout to the initial value.
 		resetHandshakeTimeout()
 
-		forwarder.ws = conn
-		forwarder.t.Go(forwarder.loopPing)
-		forwarder.t.Go(forwarder.loopForward)
+		forwarder.conn = conn
+
+		forwarder.connTomb = tomb.Tomb{}
+		forwarder.connTomb.Go(forwarder.loopPing)
+		forwarder.connTomb.Go(forwarder.loopForward)
+
+		select {
+		case <-forwarder.connTomb.Dead():
+			continue
+
+		case <-forwarder.mainTomb.Dying():
+			if err := forwarder.writeMessage(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "KTHXBYE"),
+			); err != nil {
+				logger.Warn("failed to close the connection cleanly", log.Ctx{"error": err})
+			}
+
+			if err := conn.Close(); err != nil {
+				logger.Warn("failed to close the connection", log.Ctx{"error": err})
+			}
+
+			forwarder.connTomb.Wait()
+			return nil
+		}
 	}
 }
 
