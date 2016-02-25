@@ -30,31 +30,33 @@ const (
 )
 
 type Forwarder struct {
+	ws *websocket.Conn
+
 	log log.Logger
 	t   tomb.Tomb
 }
 
-func Forward(changesAddr string, forwardCh chan<- *common.SensorState) *Forwarder {
+func Forward(changeFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
 		log: log.New(log.Ctx{
 			"component":      "Forwarder",
 			"source address": changedAddr,
 		}),
-		changesAddr: changesAddr,
-		forwardCh:   forwardCh,
+		sourceAddr: changeFeedURL,
+		forwardCh:  forwardCh,
 	}
 
-	// Start the loop.
-	forwarder.t.Go(forwarder.loop)
+	// Start the connection manager.
+	forwarder.t.Go(forwarder.connectionManager)
 
 	// Return the new forwarder.
 	return forwarder
 }
 
-func (forwarder *Forwarder) loop() error {
+func (forwarder *Forwarder) connectionManager() error {
 	// Set up logging for this goroutine.
-	logger := forwarder.log.New(log.Ctx{"thread": "main"})
+	logger := forwarder.log.New(log.Ctx{"thread": "connection manager"})
 
 	// Handshake timeout handling.
 	var handshakeTimeout time.Duration
@@ -70,7 +72,7 @@ func (forwarder *Forwarder) loop() error {
 	resetHandshakeTimeout()
 
 	for {
-		// Try to connect to the source device using the current handshake timeout.
+		// Try to connect to the source feed using the current handshake timeout.
 		dialer := &websocket.Dialer{
 			HandshakeTimeout: handshakeTimeout,
 		}
@@ -78,6 +80,7 @@ func (forwarder *Forwarder) loop() error {
 		logger.Info("connecting to the source device", log.Ctx{
 			"timeout": handshakeTimeout,
 		})
+
 		conn, resp, err := dialer.Dial(changesAddr, nil)
 		if err != nil {
 			// In case there is an error, we log it and increment the handshake timeout.
@@ -93,48 +96,55 @@ func (forwarder *Forwarder) loop() error {
 		// In case we succeeded, we reset the handshake timeout to the initial value.
 		resetHandshakeTimeout()
 
-		// Set up read deadlines.
-		setReadDeadline := func() {
-			conn.SetReadDeadline(time.Now().Add(pongTimeout))
-		}
+		forwarder.ws = conn
+		forwarder.t.Go(forwarder.loopPing)
+		forwarder.t.Go(forwarder.loopForward)
+	}
+}
 
+func (forwarder *Forwarder) loopForward() error {
+
+	// Set up read deadlines.
+	setReadDeadline := func() {
+		conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	}
+
+	setReadDeadline()
+	conn.SetPongHandler(func(string) error {
 		setReadDeadline()
-		conn.SetPongHandler(func(string) error {
-			setReadDeadline()
-			return nil
-		})
+		return nil
+	})
 
-		// Start the PING loop.
-		go forwarder.loopPing(conn)
+	// Start the PING loop.
+	go forwarder.loopPing(conn)
 
-		// Enter the receiving loop.
-		for {
-			// Read a message.
-			messageType, messagePayload, err := conn.ReadMessage()
-			if err != nil {
-				logger.Error("failed to read a message", log.Ctx{"error": err})
-				break
-			}
-
-			// Drop the message unless it is a text message.
-			if messageType != websocket.TextMessage {
-				logger.Warn("text message expected, message dropped")
-				continue
-			}
-
-			// Decode the message payload.
-			var event common.SensorStateChangedEvent
-			if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
-				forwarder.log.Warn("failed to decode a message", log.Ctx{
-					"error":   err,
-					"message": messagePayload,
-				})
-				continue
-			}
-
-			// Forward the event.
-			forwarder.forwardCh <- &event
+	// Enter the receiving loop.
+	for {
+		// Read a message.
+		messageType, messagePayload, err := conn.ReadMessage()
+		if err != nil {
+			logger.Error("failed to read a message", log.Ctx{"error": err})
+			break
 		}
+
+		// Drop the message unless it is a text message.
+		if messageType != websocket.TextMessage {
+			logger.Warn("text message expected, message dropped")
+			continue
+		}
+
+		// Decode the message payload.
+		var event common.SensorStateChangedEvent
+		if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
+			forwarder.log.Warn("failed to decode a message", log.Ctx{
+				"error":   err,
+				"message": messagePayload,
+			})
+			continue
+		}
+
+		// Forward the event.
+		forwarder.forwardCh <- &event
 	}
 }
 
