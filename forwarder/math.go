@@ -1,6 +1,8 @@
 package forwarder
 
-func minInt64(x, y int64) int64 {
+import "time"
+
+func minDuration(x, y time.Duration) time.Duration {
 	if x < y {
 		return x
 	}

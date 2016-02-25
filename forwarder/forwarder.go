@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	// Stdlib
+	"bytes"
 	"encoding/json"
 	"time"
 
@@ -33,21 +34,23 @@ const (
 )
 
 type Forwarder struct {
+	sourceAddr string
 	ws         *websocket.Conn
-	workerTomb tomb.Tomb
+
+	forwardCh chan<- *common.SensorStateChangedEvent
 
 	log log.Logger
 	t   tomb.Tomb
 }
 
-func Forward(changeFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
+func Forward(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
 		log: log.New(log.Ctx{
 			"component":      "Forwarder",
-			"source address": changedAddr,
+			"source address": changesFeedURL,
 		}),
-		sourceAddr: changeFeedURL,
+		sourceAddr: changesFeedURL,
 		forwardCh:  forwardCh,
 	}
 
@@ -64,7 +67,7 @@ func (forwarder *Forwarder) connectionManager() error {
 
 	// Set up exponential backoff for reconnection.
 	var (
-		reconnectCh      <-chan Time
+		reconnectCh      <-chan time.Time
 		reconnectBackoff time.Duration
 	)
 
@@ -79,7 +82,7 @@ func (forwarder *Forwarder) connectionManager() error {
 			"backoff (seconds)": reconnectBackoff / time.Second,
 		})
 		reconnectCh = time.After(reconnectBackoff)
-		reconnectBackoff = minInt64(2*reconnectBackoff, maxReconnectBackoff)
+		reconnectBackoff = minDuration(2*reconnectBackoff, maxReconnectBackoff)
 	}
 
 	reconnectNow()
@@ -99,7 +102,7 @@ func (forwarder *Forwarder) connectionManager() error {
 
 			logger.Info("connecting to the source changes feed", log.Ctx{"timeout": handshakeTimeout})
 
-			conn, resp, err := dialer.Dial(changesAddr, nil)
+			ws, _, err := dialer.Dial(forwarder.sourceAddr, nil)
 			if err != nil {
 				// In case there is an error, we log it and increase the backoff.
 				// Then we try to connect again, doing this infinitely.
@@ -110,7 +113,7 @@ func (forwarder *Forwarder) connectionManager() error {
 				reconnectWithBackoff()
 				continue
 			}
-			forwarder.conn = conn
+			forwarder.ws = ws
 
 			// In case we succeed, we set reconnectCh to nil not to reconnect again immediately.
 			reconnectCh = nil
@@ -135,7 +138,7 @@ func (forwarder *Forwarder) connectionManager() error {
 			}
 
 			// Then call Close() in any case.
-			if err := conn.Close(); err != nil {
+			if err := forwarder.ws.Close(); err != nil {
 				logger.Warn("failed to close the connection", log.Ctx{"error": err})
 			}
 
@@ -150,7 +153,7 @@ func (forwarder *Forwarder) connectionManager() error {
 func (forwarder *Forwarder) readLoop() error {
 	// Some initial stuff.
 	var (
-		conn   = forwarder.conn
+		conn   = forwarder.ws
 		logger = forwarder.log.New(log.Ctx{"thread": "reader"})
 	)
 
@@ -202,7 +205,7 @@ func (forwarder *Forwarder) readLoop() error {
 		// Make sure we unblock in case Stop() is called.
 		select {
 		case forwarder.forwardCh <- &event:
-		case forwarder.t.Dying():
+		case <-forwarder.t.Dying():
 			return nil
 		}
 	}
@@ -243,8 +246,8 @@ func (forwarder *Forwarder) writeLoop() error {
 }
 
 func (forwarder *Forwarder) writeMessage(messageType int, messagePayload []byte) error {
-	forwarder.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return forwarder.conn.WriteMessage(messageType, messagePayload)
+	forwarder.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return forwarder.ws.WriteMessage(messageType, messagePayload)
 }
 
 // Stop causes the forwarder to stop forwarding.
