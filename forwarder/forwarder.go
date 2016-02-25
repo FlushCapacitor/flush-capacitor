@@ -87,6 +87,10 @@ func (forwarder *Forwarder) loop() error {
 			return nil
 		})
 
+		// Start the PING loop.
+		go forwarder.loopPing(conn)
+
+		// Enter the receiving loop.
 		for {
 			messageType, messagePayload, err := conn.ReadMessage()
 			if err != nil {
@@ -98,7 +102,7 @@ func (forwarder *Forwarder) loop() error {
 			if messageType != websocket.TextMessage {
 				// XXX: Log properly.
 				fmt.Println("Not a TextMessage!")
-				break
+				continue
 			}
 
 			var event common.SensorStateChangedEvent
@@ -110,6 +114,30 @@ func (forwarder *Forwarder) loop() error {
 
 			// Forward the event.
 			forwarder.forwardCh <- &event
+		}
+	}
+}
+
+func (forwarder *Forwarder) loopPing(conn *websocket.Conn) {
+	// Set up a ticker to tick every pingPeriod.
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+	}()
+
+	// Send a PING message every time the ticker ticks.
+	for {
+		<-ticker.C
+		conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+		if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+			if _, ok := err.(*websocket.CloseError); ok {
+				// XXX: Log properly.
+				fmt.Println("PING: connection closed, returning...")
+				return
+			}
+
+			// XXX: Log properly.
+			fmt.Println("Failed to send PING:", err)
 		}
 	}
 }
