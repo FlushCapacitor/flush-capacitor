@@ -1,18 +1,31 @@
-package sensors
+package spec
 
 import (
 	// Stdlib
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	// Vendor
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
 type Spec struct {
-	Sensors []SensorSpec `json:"sensors"`
+	Sensors []*SensorSpec `json:"sensors"`
+}
+
+type SensorSpec struct {
+	Name   string      `json:"name"`
+	Switch *SwitchSpec `json:"switch"`
+	Led    *LedSpec    `json:"led"`
+}
+
+type SwitchSpec struct {
+	Pin int `json:"pin"`
+}
+
+type LedSpec struct {
+	PinGreen int `json:"pin_green"`
+	PinRed   int `json:"pin_red"`
 }
 
 func (spec *Spec) Validate() error {
@@ -50,38 +63,4 @@ func (spec *Spec) Validate() error {
 		return errors.New("invalid")
 	}
 	return nil
-}
-
-type SensorSpec struct {
-	Name   string      `json:"name"`
-	Switch *SwitchSpec `json:"switch"`
-	Led    *LedSpec    `json:"led"`
-}
-
-type SwitchSpec struct {
-	Pin int `json:"pin"`
-}
-
-type LedSpec struct {
-	PinGreen int `json:"pin_green"`
-	PinRed   int `json:"pin_red"`
-}
-
-func FromSpec(spec *Spec) ([]Sensor, error) {
-
-}
-
-func FromSpecFile(filename string) ([]Sensor, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var spec Spec
-	if err := json.NewDecoder(file).Decode(&spec); err != nil {
-		return nil, err
-	}
-
-	return FromSpec(&spec)
 }
