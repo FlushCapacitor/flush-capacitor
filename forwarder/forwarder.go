@@ -169,29 +169,35 @@ func (forwarder *Forwarder) loopForward() error {
 	}
 }
 
-func (forwarder *Forwarder) loopPing(conn *websocket.Conn) {
+func (forwarder *Forwarder) loopPing() error {
 	// Set up logging for this goroutine.
 	logger := forwarder.log.New(log.Ctx{"thread": "ping"})
 
 	// Set up a ticker to tick every pingPeriod.
 	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-	}()
+	defer ticker.Stop()
 
-	// Send a PING message every time the ticker ticks.
 	for {
-		<-ticker.C
-		conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-		if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-			// In case this is a CloseError, return.
-			if _, ok := err.(*websocket.CloseError); ok {
-				logger.Info("connection closed, exiting...")
-				return
+		select {
+		// Wait for the next tick.
+		case <-ticker.C:
+			// Send a PING message.
+			if err := forwarder.writeMessage(websocket.PingMessage, []byte{}); err != nil {
+				// In case this is a CloseError, return it.
+				if _, ok := err.(*websocket.CloseError); ok {
+					logger.Debug("connection closed, exiting...", log.Ctx{"error": err})
+					return nil
+				}
+
+				// Otherwise log the error and continue.
+				logger.Error("failed to send PING", log.Ctx{"error": err})
+				return err
 			}
 
-			// Otherwise log the error and continue.
-			logger.Error("failed to send a PING message", log.Ctx{"error": err})
+		// Return immediately in case Stop() is called.
+		case <-forwarder.t.Dying():
+			logger.Debug("forwarder being stopped, exiting...")
+			return nil
 		}
 	}
 }
