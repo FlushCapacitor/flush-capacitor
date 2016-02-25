@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	// Stdlib
+	"encoding/json"
 	"time"
 
 	// Internal
@@ -9,6 +10,7 @@ import (
 
 	// Vendor
 	"github.com/gorilla/websocket"
+	log "gopkg.in/inconshreveable/log15.v2"
 	"gopkg.in/tomb.v2"
 )
 
@@ -28,13 +30,17 @@ const (
 )
 
 type Forwarder struct {
-	ws *websocket.Conn
-	t  tomb.Tomb
+	log log.Logger
+	t   tomb.Tomb
 }
 
 func Forward(changesAddr string, forwardCh chan<- *common.SensorState) *Forwarder {
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
+		log: log.New(log.Ctx{
+			"component":      "Forwarder",
+			"source address": changedAddr,
+		}),
 		changesAddr: changesAddr,
 		forwardCh:   forwardCh,
 	}
@@ -47,6 +53,10 @@ func Forward(changesAddr string, forwardCh chan<- *common.SensorState) *Forwarde
 }
 
 func (forwarder *Forwarder) loop() error {
+	// Set up logging for this goroutine.
+	logger := forwarder.log.New(log.Ctx{"thread": "main"})
+
+	// Handshake timeout handling.
 	var handshakeTimeout time.Duration
 
 	resetHandshakeTimeout := func() {
@@ -65,10 +75,17 @@ func (forwarder *Forwarder) loop() error {
 			HandshakeTimeout: handshakeTimeout,
 		}
 
+		logger.Info("connecting to the source device", log.Ctx{
+			"timeout": handshakeTimeout,
+		})
 		conn, resp, err := dialer.Dial(changesAddr, nil)
 		if err != nil {
 			// In case there is an error, we log it and increment the handshake timeout.
 			// Then we try to connect again, doing this infinitely.
+			logger.Error("failed to connect to the source device", log.Ctx{
+				"error":   err,
+				"timeout": handshakeTimeout,
+			})
 			incrementHandshakeTimeout()
 			continue
 		}
@@ -92,23 +109,26 @@ func (forwarder *Forwarder) loop() error {
 
 		// Enter the receiving loop.
 		for {
+			// Read a message.
 			messageType, messagePayload, err := conn.ReadMessage()
 			if err != nil {
-				// XXX: Log properly.
-				fmt.Println(err)
+				logger.Error("failed to read a message", log.Ctx{"error": err})
 				break
 			}
 
+			// Drop the message unless it is a text message.
 			if messageType != websocket.TextMessage {
-				// XXX: Log properly.
-				fmt.Println("Not a TextMessage!")
+				logger.Warn("text message expected, message dropped")
 				continue
 			}
 
+			// Decode the message payload.
 			var event common.SensorStateChangedEvent
 			if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
-				// XXX: Log properly.
-				fmt.Println("Failed to decode:", messagePayload, err)
+				forwarder.log.Warn("failed to decode a message", log.Ctx{
+					"error":   err,
+					"message": messagePayload,
+				})
 				continue
 			}
 
@@ -119,6 +139,9 @@ func (forwarder *Forwarder) loop() error {
 }
 
 func (forwarder *Forwarder) loopPing(conn *websocket.Conn) {
+	// Set up logging for this goroutine.
+	logger := forwarder.log.New(log.Ctx{"thread": "ping"})
+
 	// Set up a ticker to tick every pingPeriod.
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -130,14 +153,14 @@ func (forwarder *Forwarder) loopPing(conn *websocket.Conn) {
 		<-ticker.C
 		conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 		if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+			// In case this is a CloseError, return.
 			if _, ok := err.(*websocket.CloseError); ok {
-				// XXX: Log properly.
-				fmt.Println("PING: connection closed, returning...")
+				logger.Info("connection closed, exiting...")
 				return
 			}
 
-			// XXX: Log properly.
-			fmt.Println("Failed to send PING:", err)
+			// Otherwise log the error and continue.
+			logger.Error("failed to send a PING message", log.Ctx{"error": err})
 		}
 	}
 }
