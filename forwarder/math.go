@@ -1,6 +1,6 @@
 package forwarder
 
-func minInt(x, y int) int {
+func minInt64(x, y int64) int64 {
 	if x < y {
 		return x
 	}
