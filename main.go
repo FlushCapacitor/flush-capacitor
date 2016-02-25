@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/FlushCapacitor/flush-capacitor/config"
 	"github.com/FlushCapacitor/flush-capacitor/sensors"
 )
 
@@ -30,16 +31,26 @@ func run() error {
 	addr := flag.String("listen", "localhost:8080", "network address to listen on")
 	canonicalUrl := flag.String("canonical_url", "localhost:8080",
 		"URL to be used to access the server")
-	rand := flag.Bool("random", false, "trigger sensor changes randomly")
-	watch := flag.Bool("watch", false, "watch the toilet status in the command line")
+	spec := flag.String("sensor_spec", "", "sensor specification file")
 
 	var forward StringSliceFlag
 	flag.Var(&forward, "forward", "forward events from another device")
 
 	flag.Parse()
 
-	if *watch {
-		return monitor()
+	// Load the config file when desired.
+	var (
+		sensorConfig *config.Config
+		err          error
+	)
+	if *spec != "" {
+		sensorConfig, err = config.ReadSensorConfig(*spec)
+		if err != nil {
+			return err
+		}
+		if err := sensorConfig.Validate(); err != nil {
+			return err
+		}
 	}
 
 	// Instantiate the server.
@@ -63,8 +74,6 @@ func run() error {
 	// Get the sensors.
 	var ss []sensors.Sensor
 	switch {
-	case *rand:
-		ss = getRandomSensors()
 	case len(forward.Values) == 0:
 		var err error
 		ss, err = getSensors()
@@ -98,66 +107,4 @@ func terminate(srv *Server) {
 	if err := srv.Terminate(); err != nil {
 		log.Println("Warning:", err)
 	}
-}
-
-func monitor() error {
-	// Start catching signals.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-	// Get the sensors.
-	ss, err := getSensors()
-	if err != nil {
-		return err
-	}
-
-	// Close the sensors on exit.
-	for _, s := range ss {
-		defer func(s sensors.Sensor) {
-			if err := s.Close(); err != nil {
-				log.Println("Warning:", err)
-			}
-		}(s)
-	}
-
-	// Get the left and the right toilet sensor.
-	var (
-		left  sensors.Sensor
-		right sensors.Sensor
-	)
-	if ss[0].Name() == toiletNameLeft {
-		left, right = ss[0], ss[1]
-	} else {
-		left, right = ss[1], ss[0]
-	}
-
-	// Print the initial status.
-	fmt.Println(" L | R")
-	fmt.Println("---|---")
-	fmt.Printf(" %v | %v\n", toFlag(left.State()), toFlag(right.State()))
-
-	// Start watching the sensors.
-	for _, s := range ss {
-		err := func(s sensors.Sensor) error {
-			return s.Watch(func() {
-				fmt.Printf(
-					" %v | %v\n", toFlag(left.State()), toFlag(right.State()))
-			})
-		}(s)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Wait for a signal to arrive.
-	<-sigCh
-
-	return nil
-}
-
-func toFlag(state string) string {
-	if state == "locked" {
-		return "X"
-	}
-	return "O"
 }

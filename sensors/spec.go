@@ -1,4 +1,4 @@
-package config
+package sensors
 
 import (
 	// Stdlib
@@ -11,16 +11,19 @@ import (
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
-type Config struct {
-	Sensors []SensorConfig `json:"sensors"`
+type Spec struct {
+	Sensors []SensorSpec `json:"sensors"`
 }
 
-func (config *Config) Validate() error {
+func (spec *Spec) Validate() error {
 	var (
-		logger  = log.New(log.Ctx{"component": "config"})
+		logger = log.New(log.Ctx{
+			"module": "sensors",
+			"area":   "spec",
+		})
 		invalid bool
 	)
-	for i, sensor := range config.Sensors {
+	for i, sensor := range spec.Sensors {
 		fieldNotSet := func(path string) {
 			logger.Error("required field not set", log.Ctx{
 				"path": fmt.Sprintf("sensors[%v].%v", i, path),
@@ -49,31 +52,35 @@ func (config *Config) Validate() error {
 	return nil
 }
 
-type SensorConfig struct {
-	Name   string        `json:"name"`
-	Switch *SwitchConfig `json:"switch"`
-	Led    *LedConfig    `json:"led"`
+type SensorSpec struct {
+	Name   string      `json:"name"`
+	Switch *SwitchSpec `json:"switch"`
+	Led    *LedSpec    `json:"led"`
 }
 
-type SwitchConfig struct {
+type SwitchSpec struct {
 	Pin int `json:"pin"`
 }
 
-type LedConfig struct {
+type LedSpec struct {
 	PinGreen int `json:"pin_green"`
 	PinRed   int `json:"pin_red"`
 }
 
-func ReadSensorConfig(filename string) (*Config, error) {
+func ReadSpec(filename string) (*Spec, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	var config Config
-	if err := json.NewDecoder(file).Decode(&config); err != nil {
+	var spec Spec
+	if err := json.NewDecoder(file).Decode(&spec); err != nil {
 		return nil, err
 	}
-	return &config, nil
+	return &spec, nil
+}
+
+func SensorsFromSpec(spec *Spec) ([]Sensor, error) {
+
 }
