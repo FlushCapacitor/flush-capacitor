@@ -15,11 +15,14 @@ import (
 )
 
 const (
+	// Connection handshake timeout.
+	handshakeTimeout = 5 * time.Second
+
 	// The initial handshake timeout before we start exponential backoff.
-	initialHandshakeTimeout = 2 * time.Second
+	initialReconnectBackoff = 2 * time.Second
 
 	// The backoff should be limited to certain time.
-	maxHandshakeTimeout = 1 * time.Minute
+	maxReconnectBackoff = 1 * time.Minute
 
 	// Every message must be written to the peer in less than 10 seconds.
 	writeTimeout = 10 * time.Second
@@ -30,8 +33,8 @@ const (
 )
 
 type Forwarder struct {
-	ws       *websocket.Conn
-	connTomb tomb.Tomb
+	ws         *websocket.Conn
+	workerTomb tomb.Tomb
 
 	log log.Logger
 	t   tomb.Tomb
@@ -56,55 +59,70 @@ func Forward(changeFeedURL string, forwardCh chan<- *common.SensorStateChangedEv
 }
 
 func (forwarder *Forwarder) connectionManager() error {
-	// Set up logging for this goroutine.
+	// Set up logging.
 	logger := forwarder.log.New(log.Ctx{"thread": "connection manager"})
 
-	// Handshake timeout handling.
-	var handshakeTimeout time.Duration
+	// Set up exponential backoff for reconnection.
+	var (
+		reconnectCh      <-chan Time
+		reconnectBackoff time.Duration
+	)
 
-	resetHandshakeTimeout := func() {
-		handshakeTimeout = initialHandshakeTimeout
+	reconnectNow := func() {
+		logger.Debug("will try to reconnect now")
+		reconnectCh = time.After(0)
+		reconnectBackoff = initialReconnectBackoff
 	}
 
-	incrementHandshakeTimeout := func() {
-		handshakeTimeout = minInt(2*handshakeTimeout, maxHandshakeTimeout)
+	reconnectWithBackoff := func() {
+		logger.Debug("will try to reconnect", log.Ctx{
+			"backoff (seconds)": reconnectBackoff / time.Second,
+		})
+		reconnectCh = time.After(reconnectBackoff)
+		reconnectBackoff = minInt64(2*reconnectBackoff, maxReconnectBackoff)
 	}
 
-	resetHandshakeTimeout()
+	reconnectNow()
 
+	// A tomb for read/write goroutines.
+	var workerTomb tomb.Tomb
+
+	// Enter the main loop.
 	for {
-		// Try to connect to the source feed using the current handshake timeout.
-		dialer := &websocket.Dialer{
-			HandshakeTimeout: handshakeTimeout,
-		}
-
-		logger.Info("connecting to the source device", log.Ctx{"timeout": handshakeTimeout})
-
-		conn, resp, err := dialer.Dial(changesAddr, nil)
-		if err != nil {
-			// In case there is an error, we log it and increment the handshake timeout.
-			// Then we try to connect again, doing this infinitely.
-			logger.Error("failed to connect to the source device", log.Ctx{
-				"error":   err,
-				"timeout": handshakeTimeout,
-			})
-			incrementHandshakeTimeout()
-			continue
-		}
-		forwarder.conn = conn
-
-		// In case we succeeded, we reset the handshake timeout to the initial value.
-		resetHandshakeTimeout()
-
-		// Star the loops.
-		var connTomb tomb.Tomb
-		connTomb.Go(forwarder.readLoop)
-		connTomb.Go(forwarder.writeLoop)
-
 		select {
-		// In case the loops die, we continue = reconnect.
-		case <-connTomb.Dead():
-			continue
+		// Here we obviously try to reconnect.
+		case <-reconnectCh:
+			// Try to connect to the source feed.
+			dialer := &websocket.Dialer{
+				HandshakeTimeout: handshakeTimeout,
+			}
+
+			logger.Info("connecting to the source changes feed", log.Ctx{"timeout": handshakeTimeout})
+
+			conn, resp, err := dialer.Dial(changesAddr, nil)
+			if err != nil {
+				// In case there is an error, we log it and increase the backoff.
+				// Then we try to connect again, doing this infinitely.
+				logger.Error("failed to connect to the source changes feed", log.Ctx{
+					"error":   err,
+					"timeout": handshakeTimeout,
+				})
+				reconnectWithBackoff()
+				continue
+			}
+			forwarder.conn = conn
+
+			// In case we succeed, we set reconnectCh to nil not to reconnect again immediately.
+			reconnectCh = nil
+
+			// Star the loops.
+			workerTomb = tomb.Tomb{}
+			workerTomb.Go(forwarder.readLoop)
+			workerTomb.Go(forwarder.writeLoop)
+
+		// In case the loops die, we reconnect immediately.
+		case <-workerTomb.Dead():
+			reconnectNow()
 
 		// In case Stop() is called, we close the connection cleanly.
 		case <-forwarder.t.Dying():
@@ -122,7 +140,8 @@ func (forwarder *Forwarder) connectionManager() error {
 			}
 
 			// And finally, wait for the loops to die.
-			connTomb.Wait()
+			logger.Debug("waiting for the worker threads to exit")
+			workerTomb.Wait()
 			return nil
 		}
 	}
@@ -130,7 +149,7 @@ func (forwarder *Forwarder) connectionManager() error {
 
 func (forwarder *Forwarder) writeLoop() error {
 	// Set up logging for this goroutine.
-	logger := forwarder.log.New(log.Ctx{"thread": "ping"})
+	logger := forwarder.log.New(log.Ctx{"thread": "writer"})
 
 	// Set up a ticker to tick every pingPeriod.
 	ticker := time.NewTicker(pingPeriod)
@@ -223,14 +242,17 @@ func (forwarder *Forwarder) readLoop() error {
 	}
 }
 
+func (forwarder *Forwarder) writeMessage(messageType int, messagePayload []byte) error {
+	forwarder.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return forwarder.conn.WriteMessage(messageType, messagePayload)
+}
+
+// Stop causes the forwarder to stop forwarding.
 func (forwarder *Forwarder) Stop() {
 	forwarder.t.Kill(nil)
 }
 
+// Dead returns a channel that is closed once the forwarder has stopped.
 func (forwarder *Forwarder) Dead() <-chan struct{} {
 	return forwarder.t.Dead()
-}
-
-func (forwarder *Forwarder) Wait() error {
-	return forwarder.t.Wait()
 }
