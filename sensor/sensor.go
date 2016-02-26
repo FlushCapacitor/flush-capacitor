@@ -17,22 +17,14 @@ type Sensor interface {
 	Close() error
 }
 
-func FromSpec(config *spec.Spec) ([]Sensor, error) {
-	// Validate the spec.
-	if err := config.Validate(); err != nil {
+func FromSpec(ds *spec.DeviceSpec) (Sensor, error) {
+	// Check the spec.
+	if err := ds.Validate(); err != nil {
 		return nil, err
 	}
 
-	// Instantiate the sensors according to the spec.
-	sensors := make([]Sensor, 0, len(config.Sensors))
-	for _, sensorSpec := range config.Sensors {
-		sensor, err := gpio.SensorFromSpec(sensorSpec)
-		if err != nil {
-			return nil, err
-		}
-		sensors = append(sensors, sensor)
-	}
-	return sensors, nil
+	// Create a sensor based on the spec.
+	return gpio.SensorFromSpec(ds)
 }
 
 func FromSpecFile(filename string) ([]Sensor, error) {
@@ -44,11 +36,11 @@ func FromSpecFile(filename string) ([]Sensor, error) {
 	defer file.Close()
 
 	// Read and parse the spec file.
-	var config spec.Spec
-	if err := json.NewDecoder(file).Decode(&config); err != nil {
+	var ds spec.DeviceSpec
+	if err := json.NewDecoder(file).Decode(&ds); err != nil {
 		return nil, err
 	}
 
 	// Pass the spec to FromSpec.
-	return FromSpec(&config)
+	return FromSpec(&ds)
 }

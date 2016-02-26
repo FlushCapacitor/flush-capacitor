@@ -9,17 +9,21 @@ import (
 )
 
 type DeviceSpec struct {
-	Name   string `json:"name"`
-	Sensor struct {
-		Pin int `json:"pin"`
-	} `json:"sensor"`
-	Led struct {
-		PinGreen int `json:"pin_green"`
-		PinRed   int `json:"pin_red"`
-	} `json:"led"`
+	Name   string      `json:"name"`
+	Sensor *SensorSpec `json:"sensor"`
+	Led    *LedSpec    `json:"led"`
 }
 
-func (spec *Spec) Validate() error {
+type SensorSpec struct {
+	Pin *int `json:"pin"`
+}
+
+type LedSpec struct {
+	PinGreen *int `json:"pin_green"`
+	PinRed   *int `json:"pin_red"`
+}
+
+func (spec *DeviceSpec) Validate() error {
 	var (
 		logger  = log.New(log.Ctx{"module": "spec"})
 		invalid bool
@@ -35,19 +39,38 @@ func (spec *Spec) Validate() error {
 	if spec.Name == "" {
 		fieldNotSet("name")
 	}
-	if spec.Sensor.Pin == 0 {
+
+	if spec.Sensor == nil || spec.Sensor.Pin == nil {
 		fieldNotSet("sensor.pin")
 	}
-	if spec.Led.PinGreen != 0 || spec.Led.PinRed != 0 {
-		if spec.Led.PinGreen == 0 {
+
+	if led := spec.Led; led != nil {
+		if led.PinGreen == nil {
 			fieldNotSet("led.pin_green")
 		}
-		if spec.Led.PinRed == 0 {
+		if led.PinRed == nil {
 			fieldNotSet("led.pin_red")
 		}
 	}
+
 	if invalid {
 		return errors.New("invalid")
 	}
 	return nil
+}
+
+func (spec *DeviceSpec) SensorPin() int {
+	return *spec.Sensor.Pin
+}
+
+func (spec *DeviceSpec) LedPresent() bool {
+	return spec.Led != nil
+}
+
+func (spec *DeviceSpec) LedPinGreen() int {
+	return *spec.Led.PinGreen
+}
+
+func (spec *DeviceSpec) LedPinRed() int {
+	return *spec.Led.PinRed
 }
