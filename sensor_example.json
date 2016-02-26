@@ -1,5 +1,5 @@
 {
-  "name": "shower"
+  "name": "shower",
   "sensor": {
     "pin": 0
   },
