@@ -10,17 +10,32 @@ import (
 	"github.com/FlushCapacitor/flush-capacitor/sensors/spec"
 )
 
-func FromSpec(ds *spec.DeviceSpec) (Sensor, error) {
+func FromSpec(ds *spec.DeviceSpec) ([]Sensor, error) {
 	// Check the spec.
 	if err := ds.Validate(); err != nil {
 		return nil, err
 	}
 
-	// Create a sensor based on the spec.
-	return rpi.SensorFromSpec(ds)
+	// Instantiate sensors according to the spec.
+	sensors := make([]Sensor, 0, len(ds.Sensors))
+	for _, sensorSpec := range ds.Sensors {
+		sensor, err := rpi.SensorFromSpec(sensorSpec)
+		if err != nil {
+			// In case there is an error, close the sensors already created.
+			for _, sensor := range sensors {
+				sensor.Close()
+			}
+			// Return the error.
+			return err
+		}
+		sensors = append(sensors, sensor)
+	}
+
+	// Return the sensors.
+	return sensors, nil
 }
 
-func FromSpecFile(filename string) (Sensor, error) {
+func FromSpecFile(filename string) ([]Sensor, error) {
 	// Open the spec file.
 	file, err := os.Open(filename)
 	if err != nil {

@@ -86,9 +86,9 @@ func New(options ...func(*Server)) (*Server, error) {
 
 	// Prepare the request handlers.
 	r := mux.NewRouter()
-	r.Methods("GET").HandleFunc("/", srv.serveHome)
-	r.Methods("GET").HandleFunc("/api/sensors", srv.serveSensors)
-	r.HandleFunc("/changes", srv.serveSensorChanges)
+	r.Path("/").Methods("GET").HandlerFunc(srv.serveHome)
+	r.Path("/api/sensors").Methods("GET").HandlerFunc(srv.serveSensors)
+	r.Path("/changes").HandlerFunc(srv.serveSensorChanges)
 
 	srv.handler = r
 

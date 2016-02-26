@@ -96,7 +96,7 @@ func run() error {
 	return srv.ListenAndServe()
 }
 
-func terminate(srv *Server) {
+func terminate(srv *server.Server) {
 	if err := srv.Terminate(); err != nil {
 		log.Println("Warning:", err)
 	}
