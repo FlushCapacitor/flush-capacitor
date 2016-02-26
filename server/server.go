@@ -11,8 +11,8 @@ import (
 	"net/http"
 
 	"github.com/FlushCapacitor/flush-capacitor/common"
+	"github.com/FlushCapacitor/flush-capacitor/device"
 	"github.com/FlushCapacitor/flush-capacitor/forwarder"
-	"github.com/FlushCapacitor/flush-capacitor/sensors"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/websocket"
@@ -31,11 +31,6 @@ type ErrRegistered struct {
 
 func (err *ErrRegistered) Error() string {
 	return fmt.Sprintf("sensor already registered: %v", err.sensorName)
-}
-
-type Sensor struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
 }
 
 type Server struct {
