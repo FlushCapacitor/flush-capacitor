@@ -27,7 +27,7 @@ func FromSpec(ds *spec.DeviceSpec) (Sensor, error) {
 	return gpio.SensorFromSpec(ds)
 }
 
-func FromSpecFile(filename string) ([]Sensor, error) {
+func FromSpecFile(filename string) (Sensor, error) {
 	// Open the spec file.
 	file, err := os.Open(filename)
 	if err != nil {
