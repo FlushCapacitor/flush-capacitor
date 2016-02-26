@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	// Internal
-	"github.com/FlushCapacitor/flush-capacitor/sensor/spec"
+	"github.com/FlushCapacitor/flush-capacitor/sensors/spec"
 
 	// Vendor
 	"github.com/davecheney/gpio"
