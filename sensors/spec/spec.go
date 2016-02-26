@@ -9,31 +9,20 @@ import (
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
-type Spec struct {
-	Sensors []*SensorSpec `json:"sensors"`
-}
-
-type SensorSpec struct {
-	Name   string      `json:"name"`
-	Switch *SwitchSpec `json:"switch"`
-	Led    *LedSpec    `json:"led"`
-}
-
-type SwitchSpec struct {
-	Pin int `json:"pin"`
-}
-
-type LedSpec struct {
-	PinGreen int `json:"pin_green"`
-	PinRed   int `json:"pin_red"`
+type DeviceSpec struct {
+	Name   string `json:"name"`
+	Sensor struct {
+		Pin int `json:"pin"`
+	} `json:"sensor"`
+	Led struct {
+		PinGreen int `json:"pin_green"`
+		PinRed   int `json:"pin_red"`
+	} `json:"led"`
 }
 
 func (spec *Spec) Validate() error {
 	var (
-		logger = log.New(log.Ctx{
-			"module": "sensors",
-			"area":   "spec",
-		})
+		logger  = log.New(log.Ctx{"module": "spec"})
 		invalid bool
 	)
 	for i, sensor := range spec.Sensors {

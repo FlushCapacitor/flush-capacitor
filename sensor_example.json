@@ -1,0 +1,10 @@
+{
+  "name": "shower"
+  "sensor": {
+    "pin": 0
+  },
+  "led": {
+    "pin_green": 13,
+    "pin_red": 12
+  }
+}

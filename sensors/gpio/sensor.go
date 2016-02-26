@@ -22,9 +22,9 @@ type Sensor struct {
 	name  string
 	state string
 
-	pinSwitch   gpio.Pin
-	pinLedGreen gpio.Pin
-	pinLedRed   gpio.Pin
+	pinInput       gpio.Pin
+	pinOutputGreen gpio.Pin
+	pinOutputRed   gpio.Pin
 
 	logger log.Logger
 	mu     *sync.RWMutex
@@ -34,30 +34,19 @@ func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
 	// Prepare a logger.
 	logger := log.New(log.Ctx{"component": "GPIO sensor"})
 
-	// A cleanup helper in case something goes wrong.
-	closeOnError := func(pin gpio.Pin, pinNum int) {
-		if err != nil {
-			if err := pin.Close(); err != nil {
-				logger.Error("failed to close a pin", log.Ctx{
-					"error": err,
-					"pin":   pinNum,
-				})
-			}
-		}
-	}
-
 	// Open the switch pin.
-	pinSwitch, err := gpio.OpenPin(config.Switch.Pin, gpio.ModeInput)
+	sensorPinNum := config.Sensor.Pin
+	sensorPin, err := gpio.OpenPin(switchPinNum, gpio.ModeInput)
 	if err != nil {
 		logger.Error("failed to open the switch pin", log.Ctx{
 			"error": err,
-			"pin":   config.Switch.Pin,
+			"pin":   switchPinNum,
 		})
 		return nil, err
 	}
 	defer closeOnError(pinSwitch, config.Switch.Pin)
 
-	// Open the led pins if necessary.
+	// Open the led pins (optional).
 	var (
 		pinLedGreen gpio.Pin
 		pinLedRed   gpio.Pin
