@@ -1,10 +1,14 @@
 {
-  "name": "shower",
-  "sensor": {
-    "pin": 0
-  },
-  "led": {
-    "pin_green": 13,
-    "pin_red": 12
-  }
+  "sensors": [
+    {
+      "name": "shower",
+      "sensor_input": {
+        "pin": 0
+      },
+      "led_output": {
+        "pin_green": 13,
+        "pin_red": 12
+      }
+    }
+  ]
 }
