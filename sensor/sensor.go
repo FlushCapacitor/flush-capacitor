@@ -6,7 +6,7 @@ import (
 	"os"
 
 	// Internal
-	"github.com/FlushCapacitor/flush-capacitor/sensors/gpio"
+	"github.com/FlushCapacitor/flush-capacitor/sensors/rpi"
 	"github.com/FlushCapacitor/flush-capacitor/sensors/spec"
 )
 
@@ -24,7 +24,7 @@ func FromSpec(ds *spec.DeviceSpec) (Sensor, error) {
 	}
 
 	// Create a sensor based on the spec.
-	return gpio.SensorFromSpec(ds)
+	return rpi.SensorFromSpec(ds)
 }
 
 func FromSpecFile(filename string) (Sensor, error) {

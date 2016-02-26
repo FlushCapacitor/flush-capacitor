@@ -18,6 +18,8 @@ const (
 	StateError = "error"
 )
 
+// Sensor represents a RPi device.
+// It implements sensors.Sensor interface.
 type Sensor struct {
 	name  string
 	state string
@@ -36,6 +38,7 @@ type Sensor struct {
 	mu *sync.RWMutex
 }
 
+// SensorFromSpec creates a new sensor according to the device spec.
 func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 	// Prepare a logger.
 	logger := log.New(log.Ctx{"component": "sensor"})
@@ -178,24 +181,23 @@ func (sensor *Sensor) getUnsafe() (value, changed bool, err error) {
 	return
 }
 
-func (sensor *Sensor) runWatcher() {
-	if sensor.watcher != nil {
-		sensor.watcher()
-	}
-}
-
+// Name returns the name assigned to this sensor.
 func (sensor *Sensor) Name() string {
 	sensor.mu.RLock()
 	defer sensor.mu.RUnlock()
 	return sensor.name
 }
 
+// State returns the state of this sensor.
+// Can be "locked", "unlocked" or "error".
 func (sensor *Sensor) State() string {
 	sensor.mu.RLock()
 	defer sensor.mu.RUnlock()
 	return sensor.state
 }
 
+// Watch sets sensor to run the given watcher function when there is a change.
+// The watcher is run for any change, i.e also when an error occurs.
 func (sensor *Sensor) Watch(watcher func()) error {
 	sensor.mu.Lock()
 	defer sensor.mu.Unlock()
@@ -203,18 +205,19 @@ func (sensor *Sensor) Watch(watcher func()) error {
 	return nil
 }
 
+// Close closes all pins being used internally.
 func (sensor *Sensor) Close() error {
 	// Close the sensor.
-	if err := sensor.pinSwitch.Close(); err != nil {
+	if err := sensor.sensorPin.Close(); err != nil {
 		return err
 	}
 
-	// Close the led if present.
+	// Close the led if necessary.
 	if sensor.ledPresent {
-		if err := sensor.pinLedGreen.Close(); err != nil {
+		if err := sensor.ledGreenPin.Close(); err != nil {
 			return err
 		}
-		if err := sensor.pinLedRed.Close(); err != nil {
+		if err := sensor.ledRedPin.Close(); err != nil {
 			return err
 		}
 	}
