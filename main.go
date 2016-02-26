@@ -1,15 +1,18 @@
 package main
 
 import (
+	// Stdlib
+	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
-	"github.com/FlushCapacitor/flush-capacitor/config"
+	// Internal
 	"github.com/FlushCapacitor/flush-capacitor/sensors"
+	"github.com/FlushCapacitor/flush-capacitor/server"
 )
 
 func main() {
@@ -37,28 +40,28 @@ func run() error {
 	flag.Parse()
 
 	// Make sure the flags make sense.
-	forwardAddrs = forward.Values
+	forwardAddrs := forward.Values
 	if len(forwardAddrs) == 0 && spec == "" {
 		return errors.New("either -device_spec or -forward must be specified")
 	}
 
 	// Load the config file when desired.
 	var (
-		ss  []sensor.Sensor
+		ss  []sensors.Sensor
 		err error
 	)
-	if *spec != "" {
-		ss, err = sensors.FromSpecFile(*spec)
+	if spec != "" {
+		ss, err = sensors.FromSpecFile(spec)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Instantiate the server.
-	srv, err := NewServer(
-		SetAddr(*addr),
-		SetCanonicalUrl(*canonicalUrl),
-		ForwardDevices(forward.Values),
+	srv, err := server.New(
+		server.SetAddr(*addr),
+		server.SetCanonicalUrl(*canonicalUrl),
+		server.ForwardDevices(forwardAddrs),
 	)
 	if err != nil {
 		return err
@@ -71,17 +74,6 @@ func run() error {
 		<-ch
 		terminate(srv)
 	}()
-
-	// Get the sensors.
-	var ss []sensors.Sensor
-	switch {
-	case len(forward.Values) == 0:
-		var err error
-		ss, err = getSensors()
-		if err != nil {
-			return err
-		}
-	}
 
 	// Close the sensors on exit.
 	for _, sensor := range ss {

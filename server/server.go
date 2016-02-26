@@ -1,6 +1,7 @@
-package main
+package server
 
 import (
+	// Stdlib
 	"bytes"
 	"errors"
 	"fmt"
@@ -10,11 +11,14 @@ import (
 	"net"
 	"net/http"
 
+	// Internal
 	"github.com/FlushCapacitor/flush-capacitor/common"
-	"github.com/FlushCapacitor/flush-capacitor/device"
 	"github.com/FlushCapacitor/flush-capacitor/forwarder"
+	"github.com/FlushCapacitor/flush-capacitor/sensors"
 
+	// Vendor
 	"github.com/codegangsta/negroni"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/unrolled/render"
 )
@@ -43,14 +47,14 @@ type Server struct {
 
 	listener net.Listener
 
-	sensors []*Sensor
+	sensors []*common.Sensor
 	conns   []*websocket.Conn
 
 	forwarders []*forwarder.Forwarder
-	forwardCh  chan *common.SensorStateChangedEvent
+	forwardCh  chan *common.Sensor
 
 	registerSensorCh chan *registerCmd
-	sensorChangedCh  chan *Sensor
+	sensorChangedCh  chan *common.Sensor
 	registerConnCh   chan *websocket.Conn
 	unregisterConnCh chan *websocket.Conn
 	serveSensorsCh   chan *sensorsCmd
@@ -59,14 +63,14 @@ type Server struct {
 	termAckCh        chan struct{}
 }
 
-func NewServer(options ...func(*Server)) (*Server, error) {
+func New(options ...func(*Server)) (*Server, error) {
 	// Instantiate Server.
 	srv := &Server{
 		addr:             "localhost:8080",
 		canonicalUrl:     "localhost:8080",
-		forwardCh:        make(chan *common.SensorStateChangedEvent),
+		forwardCh:        make(chan *common.Sensor),
 		registerSensorCh: make(chan *registerCmd),
-		sensorChangedCh:  make(chan *Sensor),
+		sensorChangedCh:  make(chan *common.Sensor),
 		registerConnCh:   make(chan *websocket.Conn),
 		unregisterConnCh: make(chan *websocket.Conn),
 		serveSensorsCh:   make(chan *sensorsCmd),
@@ -81,12 +85,12 @@ func NewServer(options ...func(*Server)) (*Server, error) {
 	}
 
 	// Prepare the request handlers.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", srv.serveHome)
-	mux.HandleFunc("/api/sensors", srv.serveSensors)
-	mux.HandleFunc("/changes", srv.serveSensorChanges)
+	r := mux.NewRouter()
+	r.Methods("GET").HandleFunc("/", srv.serveHome)
+	r.Methods("GET").HandleFunc("/api/sensors", srv.serveSensors)
+	r.HandleFunc("/changes", srv.serveSensorChanges)
 
-	srv.handler = mux
+	srv.handler = r
 
 	// Pre-render the home page.
 	indexTemplate, err := template.ParseFiles("app/index.html")
@@ -154,7 +158,6 @@ func (srv *Server) ListenAndServe() error {
 
 	// Enable Negroni.
 	n := negroni.Classic()
-	n.Use(method("GET"))
 	n.UseHandler(srv.handler)
 	srv.handler = n
 
@@ -231,7 +234,7 @@ Loop:
 
 			// Register the event handler for the sensor.
 			err := sensor.Watch(func() {
-				srv.sensorChangedCh <- &Sensor{sensor.Name(), sensor.State()}
+				srv.sensorChangedCh <- &common.Sensor{sensor.Name(), sensor.State()}
 			})
 			if err != nil {
 				errCh <- err
@@ -239,7 +242,7 @@ Loop:
 			}
 
 			// Add the sensor to the list.
-			record := &Sensor{
+			record := &common.Sensor{
 				Name:  sensor.Name(),
 				State: sensor.State(),
 			}
@@ -297,13 +300,8 @@ Loop:
 			// Broadcast the change.
 			srv.broadcastSensorChange(sensor)
 
-		case event := <-srv.forwardCh:
+		case sensor := <-srv.forwardCh:
 			go func() {
-				sensor := &Sensor{
-					Name:  event.SensorName,
-					State: event.SensorState,
-				}
-
 				select {
 				case srv.sensorChangedCh <- sensor:
 				case <-srv.termCh:
@@ -344,7 +342,7 @@ func (srv *Server) sendSensorStates(conn *websocket.Conn) {
 	}
 }
 
-func (srv *Server) broadcastSensorChange(sensor *Sensor) {
+func (srv *Server) broadcastSensorChange(sensor *common.Sensor) {
 	// Broadcast the change to all connected clients.
 	for _, conn := range srv.conns {
 		if err := conn.WriteJSON(sensor); err != nil {

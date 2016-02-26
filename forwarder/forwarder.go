@@ -38,13 +38,13 @@ type Forwarder struct {
 	sourceAddr string
 	ws         *websocket.Conn
 
-	forwardCh chan<- *common.SensorStateChangedEvent
+	forwardCh chan<- *common.Sensor
 
 	log log.Logger
 	t   tomb.Tomb
 }
 
-func Start(changesFeedURL string, forwardCh chan<- *common.SensorStateChangedEvent) *Forwarder {
+func Start(changesFeedURL string, forwardCh chan<- *common.Sensor) *Forwarder {
 	// Store the arguments in the forwarder.
 	forwarder := &Forwarder{
 		log: log.New(log.Ctx{
@@ -201,7 +201,7 @@ func (forwarder *Forwarder) readLoop() error {
 		}
 
 		// Decode the message payload.
-		var event common.SensorStateChangedEvent
+		var event common.Sensor
 		if err := json.NewDecoder(bytes.NewReader(messagePayload)).Decode(&event); err != nil {
 			logger.Warn("failed to decode a message", log.Ctx{
 				"error":   err,
