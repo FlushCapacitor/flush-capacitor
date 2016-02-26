@@ -1,11 +1,11 @@
-package gpio
+package rpi
 
 import (
 	// Stdlib
 	"sync"
 
 	// Internal
-	"github.com/FlushCapacitor/flush-capacitor/sensors/spec"
+	"github.com/FlushCapacitor/flush-capacitor/sensor/spec"
 
 	// Vendor
 	"github.com/davecheney/gpio"
@@ -32,6 +32,8 @@ type Sensor struct {
 	ledPresent  bool
 	ledGreenPin gpio.Pin
 	ledRedPin   gpio.Pin
+
+	watcher func()
 
 	logger log.Logger
 
@@ -99,7 +101,7 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 	}
 
 	// Instantiate a Sensor so that we can start using its methods.
-	sensor := &Sensor{
+	s := &Sensor{
 		name:        ds.Name,
 		ds:          ds,
 		sensorPin:   sensorPin,
@@ -111,18 +113,18 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 	}
 
 	// Init all the pins.
-	if err := sensor.initPins(); err != nil {
+	if err := s.initPins(); err != nil {
 		return nil, err
 	}
 
 	// Done.
-	return sensor, nil
+	return s, nil
 }
 
 func (sensor *Sensor) initPins() error {
 	// Register a watcher.
 	if err := sensor.sensorPin.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
-		logger.Error("failed to begin watching the sensor", log.Ctx{
+		sensor.logger.Error("failed to begin watching the sensor", log.Ctx{
 			"error": err,
 			"pin":   sensor.ds.SensorPin(),
 		})
@@ -130,9 +132,8 @@ func (sensor *Sensor) initPins() error {
 	}
 
 	// Read the sensor pin so that the internal state is in sync.
-	if _, _, err := sensor.getUnsafe(); err != nil {
-		return err
-	}
+	_, _, err := sensor.getUnsafe()
+	return err
 }
 
 func (sensor *Sensor) onIRQEvent() {
@@ -158,22 +159,21 @@ func (sensor *Sensor) onIRQEvent() {
 
 func (sensor *Sensor) getUnsafe() (value, changed bool, err error) {
 	var (
-		v   = sensor.sensorPin.Get()
-		err = sensor.sensorPin.Err()
+		v  = sensor.sensorPin.Get()
+		ex = sensor.sensorPin.Err()
 	)
 
-	if err != nil {
+	if ex != nil {
 		sensor.logger.Error("failed to read the sensor pin", log.Ctx{
 			"error": err,
 			"pin":   sensor.ds.SensorPin(),
 		})
 		sensor.state = StateError
-		return false, false, err
+		return false, false, ex
 	}
 
 	value = v
 	changed = v != sensor.sensorPinValue
-	err = nil
 
 	sensor.state = stateString(v)
 	sensor.sensorPinValue = v
