@@ -19,16 +19,28 @@ func main() {
 }
 
 func run() error {
-	// Parse the flags.
+	// Register common flags.
 	addr := flag.String("listen", "localhost:8080", "network address to listen on")
 	canonicalUrl := flag.String("canonical_url", "localhost:8080",
 		"URL to be used to access the server")
-	spec := flag.String("device_spec", "", "device specification file")
 
 	var forward StringSliceFlag
 	flag.Var(&forward, "forward", "forward events from another device")
 
+	// Register Linux-only flags.
+	var spec string
+	if runtime.GOOS == "linux" {
+		flag.StringVar(&spec, "device_spec", "", "device specification file")
+	}
+
+	// Parse the command line.
 	flag.Parse()
+
+	// Make sure the flags make sense.
+	forwardAddrs = forward.Values
+	if len(forwardAddrs) == 0 && spec == "" {
+		return errors.New("either -device_spec or -forward must be specified")
+	}
 
 	// Load the config file when desired.
 	var (
