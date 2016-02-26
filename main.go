@@ -23,7 +23,7 @@ func run() error {
 	addr := flag.String("listen", "localhost:8080", "network address to listen on")
 	canonicalUrl := flag.String("canonical_url", "localhost:8080",
 		"URL to be used to access the server")
-	spec := flag.String("spec", "", "sensor specification file")
+	spec := flag.String("device_spec", "", "device specification file")
 
 	var forward StringSliceFlag
 	flag.Var(&forward, "forward", "forward events from another device")
