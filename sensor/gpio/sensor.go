@@ -22,102 +22,104 @@ type Sensor struct {
 	name  string
 	state string
 
-	pinInput       gpio.Pin
-	pinOutputGreen gpio.Pin
-	pinOutputRed   gpio.Pin
+	sensorPin gpio.Pin
+
+	ledPresent  bool
+	ledGreenPin gpio.Pin
+	ledRedPin   gpio.Pin
 
 	logger log.Logger
 	mu     *sync.RWMutex
 }
 
-func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
+func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 	// Prepare a logger.
-	logger := log.New(log.Ctx{"component": "GPIO sensor"})
+	logger := log.New(log.Ctx{"component": "sensor"})
 
-	// Open the switch pin.
-	sensorPinNum := config.Sensor.Pin
-	sensorPin, err := gpio.OpenPin(switchPinNum, gpio.ModeInput)
-	if err != nil {
-		logger.Error("failed to open the switch pin", log.Ctx{
+	// A helper to be used to log OpenPin errors.
+	failedToOpen := func(err error, kind string, pinNum int) error {
+		logger.Error("failed to open a pin", log.Ctx{
 			"error": err,
-			"pin":   switchPinNum,
+			"kind":  kind,
+			"pin":   pinNum,
 		})
-		return nil, err
+		return err
 	}
-	defer closeOnError(pinSwitch, config.Switch.Pin)
+
+	// A cleanup helper in case something breaks. To be used with defer.
+	closeOnError := func(pin gpio.Pin, kind string, pinNum int) {
+		if err == nil {
+			return
+		}
+		if err := pin.Close(); err != nil {
+			logger.Error("failed to close a pin", log.Ctx{
+				"error": err,
+				"kind":  kind,
+				"pin":   pinNum,
+			})
+		}
+	}
+
+	// Open the sensor pin.
+	sensorPinNum := ds.SensorPin()
+	sensorPin, err := gpio.OpenPin(sensorPinNum, gpio.ModeInput)
+	if err != nil {
+		return nil, failedToOpen(err, "sensor", sensorPinNum)
+	}
+	defer closeOnError(sensorPin, "sensor", sensorPinNum)
 
 	// Open the led pins (optional).
 	var (
-		pinLedGreen gpio.Pin
-		pinLedRed   gpio.Pin
+		ledGreenPin gpio.Pin
+		ledRedPin   gpio.Pin
 	)
-	if led := config.Led; led != nil {
+	if ds.LedPresent() {
 		// Open the green light pin.
-		pinLedGreen, err = gpio.OpenPin(led.PinGreen, gpio.ModeOutput)
+		ledGreenPinNum := ds.LedPinGreen()
+		ledGreenPin, err = gpio.OpenPin(ledGreenPinNum, gpio.ModeOutput)
 		if err != nil {
-			logger.Error("failed to open the green light pin", log.Ctx{
-				"error": err,
-				"pin":   led.PinGreen,
-			})
-			return nil, err
+			return nil, failedToOpen(err, "green light", ledGreenPinNum)
 		}
-		defer closeOnError(pinLedGreen, led.PinGreen)
+		defer closeOnError(ledGreenPin, "green light", ledGreenPinNum)
 
 		// Open the red light pin.
-		pinLedRed, err = gpio.OpenPin(led.PinGreen, gpio.ModeOutput)
+		ledRedPinNum := ds.LedPinRed()
+		ledRedPin, err = gpio.OpenPin(ledRedPinNum, gpio.ModeOutput)
 		if err != nil {
-			logger.Error("failed to open the red light pin", log.Ctx{
-				"error": err,
-				"pin":   led.PinRed,
-			})
-			return nil, err
+			return nil, failedToOpen(err, "red light", ledRedPinNum)
 		}
-		defer closeOnError(pinLedRed, led.PinRed)
+		defer closeOnError(ledRedPin, "red light", ledRedPinNum)
 	}
 
 	// Instantiate a Sensor so that we can start using its methods.
 	sensor := &Sensor{
 		name:        config.Name,
-		pinSwitch:   pinSwitch,
-		pinLedGreen: pinLedGreen,
-		pinLedRed:   pinLedRed,
-		ledPresent:  pinLedGreen != nil && pinLedRed != nil,
+		sensorPin:   pinSwitch,
+		ledPresent:  ds.LedPresent(),
+		ledGreenPin: ledGreenPin,
+		ledRedPin:   ledRedPin,
 		logger:      logger,
 		mu:          new(sync.RWMutex),
 	}
 
-	// Configure the sensor so that the led is in sync.
-	if sensor.ledPresent {
-		// Turn the green light on.
-		if err := sensor.setLedGreen(); err != nil {
-			return nil, err
-		}
-
-		// Trun the red light on in case the switch is set.
-		switchSet, err := sensor.getSwitch()
-		if err != nil {
-			return nil, err
-		}
-		if switchSet {
-			if err := sensor.setLedRed(); err != nil {
-				return nil, err
-			}
-		}
+	// Init all the pins.
+	if err := sensor.initPins(); err != nil {
+		return nil, err
 	}
 
 	// Done.
 	return sensor, nil
 }
 
-func (sensor *Sensor) init() error {
-	// Read the switch pin so that the internal state is in sync.
+func (sensor *Sensor) initPins() error {
+	// Read the sensor pin so that the internal state is in sync.
 	if err := sensor.getSwitch(); err != nil {
 		return nil, err
 	}
 
 	// Register a watcher.
 	if err := pinSwitch.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
-		logger.Error("failed to begin watching the switch", log.Ctx{
+		logger.Error("failed to begin watching the sensor", log.Ctx{
 			"error": err,
 			"pin":   config.Switch.Pin,
 		})
@@ -156,7 +158,7 @@ func (sensor *Sensor) getSwitch() (bool, error) {
 		err   = sensor.pinSwitch.Err()
 	)
 	if err != nil {
-		sensor.logger.Error("failed to read the switch pin", log.Ctx{
+		sensor.logger.Error("failed to read the sensor pin", log.Ctx{
 			"error": err,
 			"pin":   sensor.pinNumSwitch,
 		})
@@ -185,7 +187,7 @@ func (sensor *Sensor) Watch(watcher func()) error {
 }
 
 func (sensor *Sensor) Close() error {
-	// Close the switch.
+	// Close the sensor.
 	if err := sensor.pinSwitch.Close(); err != nil {
 		return err
 	}
