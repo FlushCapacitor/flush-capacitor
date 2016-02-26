@@ -7,7 +7,15 @@
     </script>
 
     <style>
+      body {
+        background-color: #cccccc;
+      }
 
+      #container {
+        width: 1000px;
+        margin: auto;
+        background-color: white;
+      }
     </style>
   </head>
   <body>
@@ -18,7 +26,7 @@
 
       function render() {
         var sortedNames = Object.keys(sensors);
-        sensorNames.sort();
+        sortedNames.sort();
 
         var sortedSensors = [];
         for (i in sortedNames) {
