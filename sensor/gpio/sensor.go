@@ -22,14 +22,18 @@ type Sensor struct {
 	name  string
 	state string
 
-	sensorPin gpio.Pin
+	ds *spec.DeviceSpec
+
+	sensorPin      gpio.Pin
+	sensorPinValue bool
 
 	ledPresent  bool
 	ledGreenPin gpio.Pin
 	ledRedPin   gpio.Pin
 
 	logger log.Logger
-	mu     *sync.RWMutex
+
+	mu *sync.RWMutex
 }
 
 func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
@@ -93,8 +97,9 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 
 	// Instantiate a Sensor so that we can start using its methods.
 	sensor := &Sensor{
-		name:        config.Name,
-		sensorPin:   pinSwitch,
+		name:        ds.Name,
+		ds:          ds,
+		sensorPin:   sensorPin,
 		ledPresent:  ds.LedPresent(),
 		ledGreenPin: ledGreenPin,
 		ledRedPin:   ledRedPin,
@@ -112,17 +117,17 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 }
 
 func (sensor *Sensor) initPins() error {
-	// Read the sensor pin so that the internal state is in sync.
-	if err := sensor.getSwitch(); err != nil {
+	// Register a watcher.
+	if err := sensor.sensorPin.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
+		logger.Error("failed to begin watching the sensor", log.Ctx{
+			"error": err,
+			"pin":   sensor.ds.SensorPin(),
+		})
 		return nil, err
 	}
 
-	// Register a watcher.
-	if err := pinSwitch.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
-		logger.Error("failed to begin watching the sensor", log.Ctx{
-			"error": err,
-			"pin":   config.Switch.Pin,
-		})
+	// Read the sensor pin so that the internal state is in sync.
+	if _, _, err := sensor.getUnsafe(); err != nil {
 		return nil, err
 	}
 }
@@ -133,38 +138,47 @@ func (sensor *Sensor) onIRQEvent() {
 	defer sensor.mu.Unlock()
 
 	// Get the current value.
-	value, err := sensor.getSwitch()
-	if err != nil {
-		watcher()
-		return
+	_, changed, err := sensor.getUnsafe()
+	if err != nil || changed {
+		sensor.runWatcher()
 	}
-
-	// In case there is no change, we are done.
-	if value == sensor.valueSwitch {
-		return
-	}
-	sensor.valueSwitch = value
-
-	// Run the watcher.
-	watcher()
 }
 
-func (sensor *Sensor) getSwitch() (bool, error) {
+func (sensor *Sensor) get() (value, changed bool, err error) {
 	sensor.mu.Lock()
 	defer sensor.mu.Unlock()
+	return sensor.getUnsafe()
+}
 
+func (sensor *Sensor) getUnsafe() (value, changed bool, err error) {
 	var (
-		value = sensor.pinSwitch.Get()
-		err   = sensor.pinSwitch.Err()
+		v   = sensor.sensorPin.Get()
+		err = sensor.sensorPin.Err()
 	)
+
 	if err != nil {
 		sensor.logger.Error("failed to read the sensor pin", log.Ctx{
 			"error": err,
-			"pin":   sensor.pinNumSwitch,
+			"pin":   sensor.ds.SensorPin(),
 		})
+		sensor.state = StateError
+		return false, false, err
 	}
-	sensor.state = stateString(value, err)
-	return value, err
+
+	value = v
+	changed = v != sensor.sensorPinValue
+	err = nil
+
+	sensor.state = stateString(v)
+	sensor.sensorPinValue = v
+
+	return
+}
+
+func (sensor *Sensor) runWatcher() {
+	if sensor.watcher != nil {
+		sensor.watcher()
+	}
 }
 
 func (sensor *Sensor) Name() string {
@@ -206,13 +220,11 @@ func (sensor *Sensor) Close() error {
 	return nil
 }
 
-func stateString(value bool, err error) string {
+func stateString(value bool) string {
 	switch {
-	case err != nil:
-		return StateError
 	case value:
-		return StateLocked
+		return StateLow
 	default:
-		return StateUnlocked
+		return StateHigh
 	}
 }
