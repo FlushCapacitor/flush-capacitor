@@ -18,7 +18,8 @@ const (
 )
 
 type Sensor struct {
-	name string
+	name  string
+	state string
 
 	pinSwitch   gpio.Pin
 	pinLedGreen gpio.Pin
@@ -74,16 +75,6 @@ func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
 		}
 		defer closeOnError(pinLedGreen, led.PinGreen)
 
-		// Set the green light pin so that is shines green by default.
-		pinLedGreen.Set()
-		if err := pinLedGreen.Err(); err != nil {
-			logger.Error("failed to set the green light pin", log.Ctx{
-				"error": err,
-				"pin":   led.PinGreen,
-			})
-			return nil, err
-		}
-
 		// Open the red light pin.
 		pinLedRed, err = gpio.OpenPin(led.PinGreen, gpio.ModeOutput)
 		if err != nil {
@@ -94,29 +85,49 @@ func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
 			return nil, err
 		}
 		defer closeOnError(pinLedRed, led.PinRed)
+	}
 
-		// In case the switch is set, set the red light pin as well.
-		if pinSwitch.Get() {
-			pinLedRed.Set()
-			if err := pinLedRed.Err(); err != nil {
-				logger.Error("failed to set the red light pin", log.Ctx{
-					"error": err,
-					"pin":   led.PinRed,
-				})
+	// Instantiate a Sensor so that we can start using its methods.
+	sensor := &Sensor{
+		name:        config.Name,
+		pinSwitch:   pinSwitch,
+		pinLedGreen: pinLedGreen,
+		pinLedRed:   pinLedRed,
+		ledEnabled:  pinLedGreen != nil && pinLedRed != nil,
+		logger:      logger,
+		mu:          new(sync.Mutex),
+	}
+
+	// Register a watcher.
+	if err := pinSwitch.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
+		logger.Error("failed to begin watching the switch", log.Ctx{
+			"error": err,
+			"pin":   config.Switch.Pin,
+		})
+		return err
+	}
+
+	// Configure the sensor so that the led is in sync.
+	if sensor.ledEnabled {
+		// Turn the green light on.
+		if err := sensor.setLedGreen(); err != nil {
+			return err
+		}
+
+		// Trun the red light on in case the switch is set.
+		switchSet, err := sensor.getSwitch()
+		if err != nil {
+			return err
+		}
+		if switchSet {
+			if err := sensor.setLedRed(); err != nil {
+				return err
 			}
 		}
 	}
 
 	// Done.
-	return &Sensor{
-		name:        config.Name,
-		pinSwitch:   pinSwitch,
-		pinLedGreen: pinLedGreen,
-		pinLedRed:   pinLedRed,
-		valueSwitch: pinSwitch.Get(),
-		logger:      logger,
-		mu:          new(sync.Mutex),
-	}, nil
+	return sensor, nil
 }
 
 func (sensor *Sensor) Name() string {
@@ -124,27 +135,27 @@ func (sensor *Sensor) Name() string {
 }
 
 func (sensor *Sensor) State() string {
-	if sensor.pinSwitch.Get() {
-		return StateHigh
-	}
-	return StateLow
+	return sensor.state
 }
 
 func (sensor *Sensor) Watch(watcher func()) error {
-	return sensor.pinSwitch.BeginWatch(gpio.EdgeBoth, func() {
-		// Make sure the state actually changed.
-		sensor.mu.Lock()
-		value := sensor.pinSwitch.Get()
-		if value == sensor.valueSwitch {
-			sensor.mu.Unlock()
-			return
-		}
-		sensor.valueSwitch = value
-		sensor.mu.Unlock()
+	sensor.watcher = watcher
+	return nil
+}
 
-		// In case the state changed, run the watcher.
-		watcher()
-	})
+func (sensor *Sensor) onIRQEvent() {
+	// Make sure the state actually changed.
+	sensor.mu.Lock()
+	value := sensor.pinSwitch.Get()
+	if value == sensor.valueSwitch {
+		sensor.mu.Unlock()
+		return
+	}
+	sensor.valueSwitch = value
+	sensor.mu.Unlock()
+
+	// In case the state changed, run the watcher.
+	watcher()
 }
 
 func (sensor *Sensor) Close() error {
