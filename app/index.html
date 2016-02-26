@@ -7,55 +7,32 @@
     </script>
 
     <style>
-      #page {
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-      }
-      #left-container {
-        float: left;
-        height: 100%;
-        width: 50%;
-      }
-      #left {
-        height: 100%;
-        width: 100%;
-        margin-right: 5px;
-      }
-      #right-container {
-        float: right;
-        height: 100%;
-        width: 50%;
-      }
-      #right {
-        height: 100%;
-        width: 100%;
-        margin-left: 5px;
-      }
+
     </style>
   </head>
   <body>
-    <div id="page">
-      <div id="left-container"><div id="left"></div></div>
-      <div id="right-container"><div id="right"></div></div>
-    </div>
+    <div id="container"></div>
+
     <script type="text/javascript">
-      var L, R;
+      var sensors = {};
 
-      function updateLeft() {
-        updateToilet(L, '#left');
-      }
+      function render() {
+        var sortedNames = Object.keys(sensors);
+        sensorNames.sort();
 
-      function updateRight() {
-        updateToilet(R, '#right');
-      }
-
-      function updateToilet(toilet, selector) {
-        if (toilet.state === 'unlocked') {
-          $(selector).css('background-color', '#6CCB69');
-        } else {
-          $(selector).css('background-color', '#E53C15');
+        var sortedSensors = [];
+        for (i in sortedNames) {
+          sortedSensors.push(sensors[sortedNames[i]]);
         }
+
+        var rows = sortedSensors
+          .map(function(sensor) {
+            return '<tr><td>' + sensor.name + '</td><td>' + sensor.state + '</td></tr>';
+          })
+          .join('\n');
+        var table = '<table>' + rows + '</table>';
+
+        $('#container').empty().append(table);
       }
 
       if ("WebSocket" in window) {
@@ -68,19 +45,11 @@
 	      };
 
 	      ws.onmessage = function (evt) {
-	        var change = JSON.parse(evt.data);
-	        console.log(change);
+	        var data = JSON.parse(evt.data);
+	        console.log(data);
 
-          switch (change.name) {
-            case 'L':
-              L = change;
-              updateLeft();
-              break;
-            case 'R':
-              R = change;
-              updateRight();
-              break;
-          }
+          sensors[data.name] = data;
+          render();
 	      };
 
 	      ws.onclose = function() {
@@ -89,20 +58,12 @@
       } else {
         // No WebSocket support, just get the sensor states once.
         // No real-time updates here, too bad.
-        $.getJSON('http://' + canonicalUrl + '/api/sensors', function(sensors) {
-          for (i in sensors) {
-            var sensor = sensors[i];
-            switch (sensor.name) {
-              case 'L':
-                L = sensor;
-                updateLeft();
-                break;
-              case 'R':
-                R = sensor;
-                updateRight();
-                break;
-            }
+        $.getJSON('http://' + canonicalUrl + '/api/sensors', function(sensors_) {
+          for (i in sensors_) {
+            var sensor = sensors_[i];
+            sensors[sensor.name] = sensor;
           }
+          render();
         })
       }
     </script>
