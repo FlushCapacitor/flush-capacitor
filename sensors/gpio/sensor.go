@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	StateLow  = "unlocked"
-	StateHigh = "locked"
+	StateLow   = "unlocked"
+	StateHigh  = "locked"
+	StateError = "error"
 )
 
 type Sensor struct {
@@ -93,7 +94,7 @@ func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
 		pinSwitch:   pinSwitch,
 		pinLedGreen: pinLedGreen,
 		pinLedRed:   pinLedRed,
-		ledEnabled:  pinLedGreen != nil && pinLedRed != nil,
+		ledPresent:  pinLedGreen != nil && pinLedRed != nil,
 		logger:      logger,
 		mu:          new(sync.Mutex),
 	}
@@ -108,7 +109,7 @@ func SensorFromSpec(config *spec.Spec) (sensor *Sensor, err error) {
 	}
 
 	// Configure the sensor so that the led is in sync.
-	if sensor.ledEnabled {
+	if sensor.ledPresent {
 		// Turn the green light on.
 		if err := sensor.setLedGreen(); err != nil {
 			return err
@@ -146,15 +147,22 @@ func (sensor *Sensor) Watch(watcher func()) error {
 func (sensor *Sensor) onIRQEvent() {
 	// Make sure the state actually changed.
 	sensor.mu.Lock()
-	value := sensor.pinSwitch.Get()
+	defer sensor.mu.Unlock()
+
+	// Get the current value.
+	value, err := sensor.getSwitch()
+	if err != nil {
+		watcher()
+		return
+	}
+
+	// In case there is no change, we are done.
 	if value == sensor.valueSwitch {
-		sensor.mu.Unlock()
 		return
 	}
 	sensor.valueSwitch = value
-	sensor.mu.Unlock()
 
-	// In case the state changed, run the watcher.
+	// Run the watcher.
 	watcher()
 }
 
@@ -165,13 +173,11 @@ func (sensor *Sensor) Close() error {
 	}
 
 	// Close the led if present.
-	if pin := sensor.pinLedGreen; pin != nil {
-		if err := pin.Close(); err != nil {
+	if sensor.ledPresent {
+		if err := sensor.pinLedGreen.Close(); err != nil {
 			return err
 		}
-	}
-	if pin := sensor.pinLedRed; pin != nil {
-		if err := pin.Close(); err != nil {
+		if err := sensor.pinLedRed.Close(); err != nil {
 			return err
 		}
 	}
