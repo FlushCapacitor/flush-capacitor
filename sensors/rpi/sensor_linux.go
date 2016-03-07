@@ -227,10 +227,9 @@ func (sensor *Sensor) Close() error {
 }
 
 func stateString(value bool) string {
-	switch {
-	case value:
-		return StateLow
-	default:
+	if value {
 		return StateHigh
+	} else {
+		return StateLog
 	}
 }
