@@ -198,9 +198,17 @@ func (sensor *Sensor) updateLed() error {
 
 	// Set/clear green/red according to the state.
 	if v := sensor.sensorPinValue; v {
-		sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
-		sensor.writePinUnsafe(sensor.circuit.LedPinRed(), sensor.ledRedPin, v)
+		err := sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
+		if err != nil {
+			return err
+		}
+		err = sensor.writePinUnsafe(sensor.circuit.LedPinRed(), sensor.ledRedPin, v)
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 func (sensor *Sensor) writePinUnsafe(pinNum int, pin gpio.Pin, value bool) error {
