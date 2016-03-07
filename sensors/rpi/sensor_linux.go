@@ -197,6 +197,7 @@ func (sensor *Sensor) updateLed() error {
 	defer sensor.mu.Unlock()
 
 	// Set/clear green/red according to the state.
+	v := sensor.sensorPinValue
 	err := sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
 	if err != nil {
 		return err
