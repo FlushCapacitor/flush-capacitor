@@ -25,3 +25,4 @@ _testmain.go
 
 # The executable
 flush-capacitor
+device_spec.json
