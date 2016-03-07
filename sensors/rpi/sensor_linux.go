@@ -133,7 +133,12 @@ func (sensor *Sensor) initPins() error {
 
 	// Read the sensor pin so that the internal state is in sync.
 	_, _, err := sensor.readState()
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Write LED.
+	return sensor.updateLed()
 }
 
 func (sensor *Sensor) onIRQEvent() {
