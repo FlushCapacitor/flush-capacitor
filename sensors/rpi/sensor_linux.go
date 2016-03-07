@@ -197,18 +197,11 @@ func (sensor *Sensor) updateLed() error {
 	defer sensor.mu.Unlock()
 
 	// Set/clear green/red according to the state.
-	if v := sensor.sensorPinValue; v {
-		err := sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
-		if err != nil {
-			return err
-		}
-		err = sensor.writePinUnsafe(sensor.circuit.LedPinRed(), sensor.ledRedPin, v)
-		if err != nil {
-			return err
-		}
+	err := sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
+	if err != nil {
+		return err
 	}
-
-	return nil
+	return sensor.writePinUnsafe(sensor.circuit.LedPinRed(), sensor.ledRedPin, v)
 }
 
 func (sensor *Sensor) writePinUnsafe(pinNum int, pin gpio.Pin, value bool) error {
