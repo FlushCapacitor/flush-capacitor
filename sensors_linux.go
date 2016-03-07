@@ -9,7 +9,7 @@ import (
 
 func getSensors() ([]sensors.Sensor, error) {
 	// Get the sensor for the first toilet.
-	pinL, err := rpi.OpenPin(gpio.GPIO8, gpio.ModeInput)
+	pinL, err := rpi.OpenPin(gpio.GPIO24, gpio.ModeInput)
 	if err != nil {
 		return nil, err
 	}
