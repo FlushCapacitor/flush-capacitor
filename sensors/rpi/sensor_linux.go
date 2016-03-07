@@ -132,7 +132,7 @@ func (sensor *Sensor) initPins() error {
 	}
 
 	// Read the sensor pin so that the internal state is in sync.
-	_, _, err := sensor.updateState()
+	_, _, err := sensor.readState()
 	return err
 }
 
@@ -147,13 +147,14 @@ func (sensor *Sensor) onIRQEvent() {
 	}()
 
 	// Run the watcher when appropriate, i.e. when there is an error or the value has changed.
-	_, changed, err := sensor.updateState()
+	_, changed, err := sensor.readState()
 	if (err != nil || changed) && sensor.watcher != nil {
 		sensor.watcher()
+		sensor.updateLed()
 	}
 }
 
-func (sensor *Sensor) updateState() (value, changed bool, err error) {
+func (sensor *Sensor) readState() (value, changed bool, err error) {
 	sensor.mu.Lock()
 	defer sensor.mu.Unlock()
 
@@ -178,6 +179,44 @@ func (sensor *Sensor) updateState() (value, changed bool, err error) {
 	sensor.sensorPinValue = v
 
 	return
+}
+
+func (sensor *Sensor) updateLed() error {
+	// In case there is nothing to do, return.
+	if !sensor.circuit.LedPresent() {
+		return nil
+	}
+
+	// Lock.
+	sensor.mu.Lock()
+	defer sensor.mu.Unlock()
+
+	// Set/clear green/red according to the state.
+	if v := sensor.sensorPinValue; v {
+		sensor.writePinUnsafe(sensor.circuit.LedPinGreen(), sensor.ledGreenPin, !v)
+		sensor.writePinUnsafe(sensor.circuit.LedPinRed(), sensor.ledRedPin, v)
+	}
+}
+
+func (sensor *Sensor) writePinUnsafe(pinNum int, pin gpio.Pin, value bool) error {
+	// Write.
+	if value {
+		pin.Set()
+	} else {
+		pin.Clear()
+	}
+
+	// Check for errors.
+	if err := pin.Err(); err != nil {
+		sensor.logger.Error("failed to write to pin", log.Ctx{
+			"error": err,
+			"pin":   pinNum,
+		})
+		return err
+	}
+
+	// Done.
+	return nil
 }
 
 // Name returns the name assigned to this sensor.
