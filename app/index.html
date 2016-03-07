@@ -56,17 +56,17 @@
         // updates, repaint the screen when a sensor state changes.
         var ws = new WebSocket('ws://' + canonicalUrl + '/changes');
 
-	      ws.onerror = function() {
-	        alert("WebSocket connection is broken");
-	      };
+        ws.onerror = function() {
+          alert("WebSocket connection is broken");
+        };
 
-	      ws.onmessage = function (evt) {
-	        var data = JSON.parse(evt.data);
-	        console.log(data);
+        ws.onmessage = function (evt) {
+          var data = JSON.parse(evt.data);
+          console.log("Message received:", data);
 
           sensors[data.name] = data;
           render();
-	      };
+        };
 
 	      ws.onclose = function() {
 	        alert("WebSocket connection is closed");
