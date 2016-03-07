@@ -26,7 +26,7 @@ func FromSpec(ds *spec.DeviceSpec) ([]Sensor, error) {
 				sensor.Close()
 			}
 			// Return the error.
-			return err
+			return nil, err
 		}
 		sensors = append(sensors, sensor)
 	}
