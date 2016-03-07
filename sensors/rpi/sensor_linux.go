@@ -230,6 +230,6 @@ func stateString(value bool) string {
 	if value {
 		return StateHigh
 	} else {
-		return StateLog
+		return StateLow
 	}
 }
