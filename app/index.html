@@ -16,6 +16,14 @@
         margin: auto;
         background-color: white;
       }
+
+      .unlocked {
+        background-color: green;
+      }
+
+      .locked {
+        background-color: red;
+      }
     </style>
   </head>
   <body>
@@ -35,7 +43,7 @@
 
         var rows = sortedSensors
           .map(function(sensor) {
-            return '<tr><td>' + sensor.name + '</td><td>' + sensor.state + '</td></tr>';
+            return '<tr><td>' + sensor.name + '</td><td class="' + sensor.state + '">' + sensor.state + '</td></tr>';
           })
           .join('\n');
         var table = '<table>' + rows + '</table>';
