@@ -68,9 +68,9 @@
           render();
         };
 
-	      ws.onclose = function() {
-	        alert("WebSocket connection is closed");
-	      };
+        ws.onclose = function() {
+          alert("WebSocket connection is closed");
+        };
       } else {
         // No WebSocket support, just get the sensor states once.
         // No real-time updates here, too bad.
