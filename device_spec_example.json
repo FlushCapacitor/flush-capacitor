@@ -1,15 +1,13 @@
 {
-  "sensors": [
+  "circuits": [
     {
       "name": "shower",
-      "input": {
+      "sensor": {
         "pin": 0
       },
-      "output": {
-        "led": {
-          "pin_green": 13,
-          "pin_red": 12
-        }
+      "led": {
+        "pin_green": 13,
+        "pin_red": 12
       }
     }
   ]
