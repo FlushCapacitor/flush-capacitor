@@ -17,9 +17,9 @@ func FromSpec(ds *spec.DeviceSpec) ([]Sensor, error) {
 	}
 
 	// Instantiate sensors according to the spec.
-	sensors := make([]Sensor, 0, len(ds.Sensors))
-	for _, sensorSpec := range ds.Sensors {
-		sensor, err := rpi.SensorFromSpec(sensorSpec)
+	sensors := make([]Sensor, 0, len(ds.Circuits))
+	for _, circuit := range ds.Circuits {
+		sensor, err := rpi.SensorFromCircuitSpec(circuit)
 		if err != nil {
 			// In case there is an error, close the sensors already created.
 			for _, sensor := range sensors {

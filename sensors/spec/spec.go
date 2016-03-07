@@ -3,24 +3,14 @@ package spec
 import (
 	// Stdlib
 	"errors"
+	"fmt"
 
 	// Vendor
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
 type DeviceSpec struct {
-	Name   string      `json:"name"`
-	Sensor *SensorSpec `json:"sensor"`
-	Led    *LedSpec    `json:"led"`
-}
-
-type SensorSpec struct {
-	Pin *int `json:"pin"`
-}
-
-type LedSpec struct {
-	PinGreen *int `json:"pin_green"`
-	PinRed   *int `json:"pin_red"`
+	Circuits []*Circuit `json:"circuits"`
 }
 
 func (spec *DeviceSpec) Validate() error {
@@ -29,27 +19,29 @@ func (spec *DeviceSpec) Validate() error {
 		invalid bool
 	)
 
-	fieldNotSet := func(path string) {
-		logger.Error("required field not set", log.Ctx{
-			"path": path,
-		})
-		invalid = true
-	}
-
-	if spec.Name == "" {
-		fieldNotSet("name")
-	}
-
-	if spec.Sensor == nil || spec.Sensor.Pin == nil {
-		fieldNotSet("sensor.pin")
-	}
-
-	if led := spec.Led; led != nil {
-		if led.PinGreen == nil {
-			fieldNotSet("led.pin_green")
+	for i, circuit := range spec.Circuits {
+		fieldNotSet := func(path string) {
+			logger.Error("required field not set", log.Ctx{
+				"path": fmt.Sprintf("circuits[%v].%v", i, path),
+			})
+			invalid = true
 		}
-		if led.PinRed == nil {
-			fieldNotSet("led.pin_red")
+
+		if circuit.Name == "" {
+			fieldNotSet("name")
+		}
+
+		if circuit.Sensor == nil || circuit.Sensor.Pin == nil {
+			fieldNotSet("sensor.pin")
+		}
+
+		if led := circuit.Led; led != nil {
+			if led.PinGreen == nil {
+				fieldNotSet("led.pin_green")
+			}
+			if led.PinRed == nil {
+				fieldNotSet("led.pin_red")
+			}
 		}
 	}
 
@@ -59,18 +51,33 @@ func (spec *DeviceSpec) Validate() error {
 	return nil
 }
 
-func (spec *DeviceSpec) SensorPin() int {
-	return *spec.Sensor.Pin
+type Circuit struct {
+	Name   string      `json:"name"`
+	Sensor *SensorSpec `json:"sensor"`
+	Led    *LedSpec    `json:"led"`
 }
 
-func (spec *DeviceSpec) LedPresent() bool {
-	return spec.Led != nil
+func (circuit *Circuit) SensorPin() int {
+	return *circuit.Sensor.Pin
 }
 
-func (spec *DeviceSpec) LedPinGreen() int {
-	return *spec.Led.PinGreen
+func (circuit *Circuit) LedPresent() bool {
+	return circuit.Led != nil
 }
 
-func (spec *DeviceSpec) LedPinRed() int {
-	return *spec.Led.PinRed
+func (circuit *Circuit) LedPinGreen() int {
+	return *circuit.Led.PinGreen
+}
+
+func (circuit *Circuit) LedPinRed() int {
+	return *circuit.Led.PinRed
+}
+
+type SensorSpec struct {
+	Pin *int `json:"pin"`
+}
+
+type LedSpec struct {
+	PinGreen *int `json:"pin_green"`
+	PinRed   *int `json:"pin_red"`
 }

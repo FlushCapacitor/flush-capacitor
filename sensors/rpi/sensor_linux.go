@@ -24,7 +24,7 @@ type Sensor struct {
 	name  string
 	state string
 
-	ds *spec.DeviceSpec
+	circuit *spec.Circuit
 
 	sensorPin      gpio.Pin
 	sensorPinValue bool
@@ -41,7 +41,7 @@ type Sensor struct {
 }
 
 // SensorFromSpec creates a new sensor according to the device spec.
-func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
+func SensorFromCircuitSpec(circuit *spec.Circuit) (sensor *Sensor, err error) {
 	// Prepare a logger.
 	logger := log.New(log.Ctx{"component": "sensor"})
 
@@ -70,7 +70,7 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 	}
 
 	// Open the sensor pin.
-	sensorPinNum := ds.SensorPin()
+	sensorPinNum := circuit.SensorPin()
 	sensorPin, err := gpio.OpenPin(sensorPinNum, gpio.ModeInput)
 	if err != nil {
 		return nil, failedToOpen(err, "sensor", sensorPinNum)
@@ -82,9 +82,9 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 		ledGreenPin gpio.Pin
 		ledRedPin   gpio.Pin
 	)
-	if ds.LedPresent() {
+	if circuit.LedPresent() {
 		// Open the green light pin.
-		ledGreenPinNum := ds.LedPinGreen()
+		ledGreenPinNum := circuit.LedPinGreen()
 		ledGreenPin, err = gpio.OpenPin(ledGreenPinNum, gpio.ModeOutput)
 		if err != nil {
 			return nil, failedToOpen(err, "green light", ledGreenPinNum)
@@ -92,7 +92,7 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 		defer closeOnError(ledGreenPin, "green light", ledGreenPinNum)
 
 		// Open the red light pin.
-		ledRedPinNum := ds.LedPinRed()
+		ledRedPinNum := circuit.LedPinRed()
 		ledRedPin, err = gpio.OpenPin(ledRedPinNum, gpio.ModeOutput)
 		if err != nil {
 			return nil, failedToOpen(err, "red light", ledRedPinNum)
@@ -102,10 +102,10 @@ func SensorFromSpec(ds *spec.DeviceSpec) (sensor *Sensor, err error) {
 
 	// Instantiate a Sensor so that we can start using its methods.
 	s := &Sensor{
-		name:        ds.Name,
-		ds:          ds,
+		name:        circuit.Name,
+		circuit:     circuit,
 		sensorPin:   sensorPin,
-		ledPresent:  ds.LedPresent(),
+		ledPresent:  circuit.LedPresent(),
 		ledGreenPin: ledGreenPin,
 		ledRedPin:   ledRedPin,
 		logger:      logger,
@@ -126,7 +126,7 @@ func (sensor *Sensor) initPins() error {
 	if err := sensor.sensorPin.BeginWatch(gpio.EdgeBoth, sensor.onIRQEvent); err != nil {
 		sensor.logger.Error("failed to begin watching the sensor", log.Ctx{
 			"error": err,
-			"pin":   sensor.ds.SensorPin(),
+			"pin":   sensor.circuit.SensorPin(),
 		})
 		return err
 	}
@@ -166,7 +166,7 @@ func (sensor *Sensor) getUnsafe() (value, changed bool, err error) {
 	if ex != nil {
 		sensor.logger.Error("failed to read the sensor pin", log.Ctx{
 			"error": err,
-			"pin":   sensor.ds.SensorPin(),
+			"pin":   sensor.circuit.SensorPin(),
 		})
 		sensor.state = StateError
 		return false, false, ex
