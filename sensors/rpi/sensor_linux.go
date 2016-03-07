@@ -132,7 +132,7 @@ func (sensor *Sensor) initPins() error {
 	}
 
 	// Read the sensor pin so that the internal state is in sync.
-	_, _, err := sensor.get()
+	_, _, err := sensor.updateState()
 	return err
 }
 
@@ -147,13 +147,13 @@ func (sensor *Sensor) onIRQEvent() {
 	}()
 
 	// Run the watcher when appropriate, i.e. when there is an error or the value has changed.
-	_, changed, err := sensor.get()
+	_, changed, err := sensor.updateState()
 	if (err != nil || changed) && sensor.watcher != nil {
 		sensor.watcher()
 	}
 }
 
-func (sensor *Sensor) get() (value, changed bool, err error) {
+func (sensor *Sensor) updateState() (value, changed bool, err error) {
 	sensor.mu.Lock()
 	defer sensor.mu.Unlock()
 
